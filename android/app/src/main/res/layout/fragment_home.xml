@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/backgroundColor"
+    tools:context=".ui.home.HomeFragment">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingTop="30dp"
+            android:paddingBottom="?attr/actionBarSize">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="90dp"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp"
+                android:orientation="horizontal"
+                android:weightSum="4">
+
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/card_robotStatus"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginRight="10dp"
+                    android:layout_weight="1"
+                    app:cardCornerRadius="20dp"
+                    app:cardBackgroundColor="@color/robot"
+                    >
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+                        <TextView
+                            android:id="@+id/textView_robotStatusTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="@font/urbanist_semibold"
+                            android:text="@string/text_robotStatusTitle"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/textView_robotStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="5dp"
+                            android:fontFamily="@font/urbanist_semibold"
+                            android:text="@string/text_robotStart"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </androidx.cardview.widget.CardView>
+
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/card_targetCoor"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginRight="10dp"
+                    android:layout_weight="1"
+                    app:cardCornerRadius="20dp"
+                    app:cardBackgroundColor="@color/target" >
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+                        <TextView
+                            android:id="@+id/textView_targetCoorTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="@font/urbanist_semibold"
+                            android:text="@string/text_targetCoorTitle"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/textView_targetCoor"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="5dp"
+                            android:fontFamily="@font/urbanist_semibold"
+                            android:text="@string/text_targetCoor"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </androidx.cardview.widget.CardView>
+
+                <!-- Set Robot and Set Direction Buttons moved here -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="2"
+                    android:orientation="horizontal">
+
+                    <ToggleButton
+                        android:id="@+id/button_startpoint"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:layout_marginRight="5dp"
+                        android:fontFamily="@font/urbanist_semibold"
+                        android:background="@drawable/button_background"
+                        android:textOff="@string/text_robotStartPoint"
+                        android:textColor="@color/black"
+                        android:textSize="12sp"
+                        android:textOn="Cancel" />
+
+                    <ToggleButton
+                        android:id="@+id/button_setDirection"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="5dp"
+                        android:fontFamily="@font/urbanist_semibold"
+                        android:textOff="@string/text_setDirection"
+                        android:background="@drawable/button_background"
+                        android:textColor="@color/black"
+                        android:textSize="12sp"
+                        android:textOn="Cancel" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Map spanning side to side with a square aspect ratio -->
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp"
+                android:layout_marginTop="30dp">
+
+                <com.example.mdp_android.ui.grid.Map
+                    android:id="@+id/mapView"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    app:layout_constraintDimensionRatio="1:1"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <!-- Controls moved underneath the grid -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp"
+                android:orientation="horizontal"
+                android:weightSum="2">
+
+                <!-- Left Column: Reset and Preset -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginRight="10dp">
+
+                    <Button
+                        android:id="@+id/button_reset"
+                        android:layout_width="match_parent"
+                        android:layout_height="50dp"
+                        android:background="@drawable/rounded_button"
+                        android:backgroundTint="@color/button_background_color_red"
+                        android:fontFamily="@font/urbanist_semibold"
+                        android:text="@string/text_reset" />
+
+                    <Spinner
+                        android:id="@+id/spinner_load_preset"
+                        android:layout_width="match_parent"
+                        android:layout_height="50dp"
+                        android:layout_marginTop="10dp"
+                        android:textAlignment="textStart"
+                        android:background="@drawable/spinner_background"
+                        android:fontFamily="@font/urbanist_semibold"
+                        android:popupBackground="@color/preset" />
+                </LinearLayout>
+
+                <!-- Right Column: Obstacles -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginLeft="10dp">
+
+                    <TextView
+                        android:id="@+id/textView_obstacleTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="10dp"
+                        android:fontFamily="@font/urbanist_semibold"
+                        android:text="@string/text_obstacleTitle"
+                        android:textColor="@color/white"
+                        android:textSize="17sp" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/recyclerView_obsList"
+                        android:layout_width="match_parent"
+                        android:layout_height="220dp">
+                    </androidx.recyclerview.widget.RecyclerView>
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Bottom section with status and arrows -->
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="5dp"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp">
+
+
+                <Button
+                    android:id="@+id/button_start"
+                    android:layout_width="200dp"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/rounded_button"
+                    android:fontFamily="@font/urbanist_semibold"
+                    android:padding="10dp"
+                    android:text="@string/button_start"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/button_taskType"
+                    android:layout_marginTop="10dp"/>
+
+                <TextView
+                    android:id="@+id/textView_taskType"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/urbanist_semibold"
+                    android:text="@string/text_taskType"
+                    android:textColor="@color/white"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/textView_Status"
+                    android:layout_marginTop="10dp" />
+
+                <ToggleButton
+                    android:id="@+id/button_taskType"
+                    android:layout_width="200dp"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/urbanist_semibold"
+                    android:padding="10dp"
+                    android:textAlignment="textStart"
+                    android:textOff="@string/button_imagerec"
+                    android:textOn="@string/button_fastest"
+                    android:background="@drawable/spinner_background"
+                    android:textColor="@color/task"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/textView_taskType"
+                    android:layout_marginTop="5dp" />
+
+                <!-- Navigation Arrows -->
+                <ImageButton
+                    android:id="@+id/imageButton_up"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:background="#F2F3EE"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/arrow_up"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintHorizontal_bias="0.85"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    tools:ignore="SpeakableTextPresentCheck" />
+
+                <ImageButton
+                    android:id="@+id/imageButton_left"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:background="#F2F3EE"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/arrow_left"
+                    app:layout_constraintEnd_toStartOf="@+id/imageButton_down"
+                    app:layout_constraintTop_toBottomOf="@+id/imageButton_up"
+                    android:layout_marginTop="5dp"
+                    android:layout_marginEnd="5dp"
+                    tools:ignore="SpeakableTextPresentCheck" />
+
+                <ImageButton
+                    android:id="@+id/imageButton_down"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:background="#F2F3EE"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/arrow_down"
+                    app:layout_constraintEnd_toEndOf="@+id/imageButton_up"
+                    app:layout_constraintStart_toStartOf="@+id/imageButton_up"
+                    app:layout_constraintTop_toBottomOf="@+id/imageButton_up"
+                    android:layout_marginTop="5dp"
+                    tools:ignore="SpeakableTextPresentCheck" />
+
+                <ImageButton
+                    android:id="@+id/imageButton_right"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:background="#F2F3EE"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/arrow_right"
+                    app:layout_constraintStart_toEndOf="@+id/imageButton_down"
+                    app:layout_constraintTop_toBottomOf="@+id/imageButton_up"
+                    android:layout_marginTop="5dp"
+                    android:layout_marginStart="5dp"
+                    tools:ignore="SpeakableTextPresentCheck" />
+
+                <TextView
+                    android:id="@+id/textView_bluetooth"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/urbanist_semibold"
+                    android:text="@string/bluetooth_device_connected_not"
+                    android:textColor="@color/white"
+                    android:textSize="18sp"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <TextView
+                    android:id="@+id/textView_StatusTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/urbanist_semibold"
+                    android:text="@string/text_StatusTitle"
+                    android:textColor="@color/white"
+                    android:textSize="18sp"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/textView_bluetooth"
+                    android:layout_marginTop="5dp" />
+
+                <TextView
+                    android:id="@+id/textView_Status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:fontFamily="@font/urbanist_semibold"
+                    android:text="@string/text_Status"
+                    android:textAlignment="textStart"
+                    android:textColor="@color/white"
+                    android:textSize="18sp"
+                    app:layout_constraintStart_toEndOf="@+id/textView_StatusTitle"
+                    app:layout_constraintTop_toTopOf="@+id/textView_StatusTitle" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+        </LinearLayout>
+    </ScrollView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
