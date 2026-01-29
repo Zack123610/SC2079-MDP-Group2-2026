@@ -60,7 +60,7 @@
                         android:scaleType="centerCrop"
 
                         app:layout_constraintEnd_toEndOf="parent"
-                        app:srcCompat="@mipmap/treeobst" />
+                        app:srcCompat="@mipmap/shell" />
 
                 </LinearLayout>
 

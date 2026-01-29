@@ -276,7 +276,7 @@
                             android:layout_height="50dp"
                             android:layout_marginStart="10dp"
                             android:background="@color/transparent"
-                            android:foreground="@drawable/poke_left" />
+                            android:foreground="@drawable/crab_left" />
 
                         <!--                        android:background="@drawable/circular_button"-->
                         <ImageButton
@@ -285,7 +285,7 @@
                             android:layout_height="50dp"
                             android:layout_marginStart="15dp"
                             android:background="@color/transparent"
-                            android:foreground="@drawable/poke_up" />
+                            android:foreground="@drawable/crab_up" />
 
                         <ImageButton
                             android:id="@+id/rightBtn"
@@ -293,7 +293,7 @@
                             android:layout_height="50dp"
                             android:layout_marginStart="15dp"
                             android:background="@color/transparent"
-                            android:foreground="@drawable/poke_right" />
+                            android:foreground="@drawable/crab_right" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -317,7 +317,7 @@
                             android:layout_height="50dp"
                             android:layout_marginStart="15dp"
                             android:background="@color/transparent"
-                            android:foreground="@drawable/poke_down" />
+                            android:foreground="@drawable/crab_down" />
 
                         <ImageButton
                             android:id="@+id/brightBtn"
