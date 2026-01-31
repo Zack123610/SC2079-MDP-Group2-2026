@@ -1,10 +1,30 @@
 [project]
 name = "sc2079-mdp-group2-2026"
 version = "0.1.0"
-description = "Add your description here"
+description = "MDP Robot Image Recognition - Pi Camera streaming with YOLO inference"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "lap>=0.5.12",
     "ultralytics>=8.4.6",
+    "pyzmq>=26.0.0",
+    "opencv-python>=4.10.0",
+    "numpy>=1.26.0",
+]
+
+[project.optional-dependencies]
+# For Raspberry Pi (use opencv-python-headless to avoid GUI dependencies)
+pi = [
+    "pyzmq>=26.0.0",
+    "opencv-python-headless>=4.10.0",
+    "numpy>=1.26.0",
+]
+
+# For PC with full GUI and YOLO
+pc = [
+    "pyzmq>=26.0.0",
+    "opencv-python>=4.10.0",
+    "numpy>=1.26.0",
+    "ultralytics>=8.4.6",
+    "lap>=0.5.12",
 ]
