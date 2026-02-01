@@ -35,7 +35,7 @@ class PathfindingRequest(BaseModel):
     robot: PathfindingRequestRobot = Field(
         description="The initial position of the robot."
     )
-    obstacles: list[PathfindingRequestObstacle] = Field(min_length=1)
+    obstacles: list[PathfindingRequestObstacle] = Field(default_factory=list)
 
 
 class PathfindingRequestRobot(BaseModel):
@@ -143,7 +143,7 @@ def pathfinding(body: PathfindingRequest):
 
     robot = body.robot.to_robot()
     obstacles = [obstacle.to_obstacle() for obstacle in body.obstacles]
-    world = World(200, robot, obstacles)
+    world = World(20, robot, obstacles)
 
     objectives = generate_objectives(world)
     segments = search(world, objectives)

@@ -281,6 +281,7 @@ def turn(world: World, start: Vector, instruction: TurnInstruction) -> list[Vect
 def __curve(
     world: World,
     turning_radius: int,
+    end: Vector,
     centre_x: int,
     centre_y,
     quadrant: int,

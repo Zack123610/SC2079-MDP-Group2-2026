@@ -29,7 +29,7 @@ def __generate_objectives(world: World, obstacle: Obstacle) -> set[Vector]:
     """
     The minimum distance (in grid cells) between the obstacle and centre of objective, inclusive. (Total cm / cm per cell).
     """
-    minimum_gap = 25 // world.cell_size
+    minimum_gap = 20 // world.cell_size # 20 cm (2 cells)
     """
     The maximum distance (in grid cells) between the obstacle and centre of objective, exclusive. (Total cm / cm per cell).
     """
@@ -39,7 +39,7 @@ def __generate_objectives(world: World, obstacle: Obstacle) -> set[Vector]:
     The offset to the sides (in grid cells) between the obstacle and objective, inclusive. 
     (Total cm / cm per cell). This should be increased as the difference in sizes between obstacles & the robot increases.
     """
-    offset = 10 // world.cell_size
+    offset = 0 // world.cell_size
 
     objectives = set()
     for gap in range(minimum_gap, maximum_gap):

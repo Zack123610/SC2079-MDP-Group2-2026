@@ -24,6 +24,23 @@ class World:
         self.obstacles = obstacles
         self.robot = robot
 
+        print(
+            "WORLD size=%s cell_size=%s",
+            self.size,
+            self.cell_size,
+        )
+
+        print(
+            "ROBOT sw=%s ne=%s centre=%s N=%s E=%s S=%s W=%s",
+            self.robot.south_west,
+            self.robot.north_east,
+            self.robot.centre,
+            self.robot.north_length,
+            self.robot.east_length,
+            self.robot.south_length,
+            self.robot.west_length,
+        )
+
         assert all(map(lambda obstacle: self.__inside(obstacle), self.obstacles))
         self.__annotate_grid()
 
@@ -36,8 +53,8 @@ class World:
                 0 <= entity.north_east.y < self.size)
 
     def __annotate_grid(self: World) -> None:
-        edge_error = round(-1 // self.cell_size)
-        obstacle_error = round(6 // self.cell_size)
+        edge_error = 0
+        obstacle_error = 0
 
         self.grid[0:(self.robot.north_length + edge_error), :] = False
         self.grid[:, -(self.robot.east_length + edge_error):] = False
@@ -46,14 +63,32 @@ class World:
 
         for obstacle in self.obstacles:
             west_x = max(obstacle.south_west.x - self.robot.west_length - obstacle_error, 0)
-            east_x = min(obstacle.north_east.x + self.robot.east_length + 1 + obstacle_error, self.size)
+            east_x = min(obstacle.north_east.x + self.robot.east_length + obstacle_error, self.size)
             south_y = max(obstacle.south_west.y - self.robot.south_length - obstacle_error, 0)
-            north_y = min(obstacle.north_east.y + self.robot.north_length + 1 + obstacle_error, self.size)
+            north_y = min(obstacle.north_east.y + self.robot.north_length + obstacle_error, self.size)
 
             self.grid[west_x:east_x, south_y:north_y] = False
+        
+        blocked = np.count_nonzero(self.grid)
+        total = self.size * self.size
+
+        print(
+            "GRID blocked=%d total=%d blocked_ratio=%.2f%%",
+            blocked,
+            total,
+            blocked / total * 100,
+        )
+
 
     def contains(self, centre: Point | Vector) -> bool:
-        return (0 <= centre.x < self.size and 0 <= centre.y < self.size) and self.grid[centre.x, centre.y]
+        ok = (
+            0 <= centre.x < self.size and
+            0 <= centre.y < self.size and
+            self.grid[centre.x, centre.y]
+        )
+        if not ok:
+            print("BLOCKED:", centre)
+        return ok
 
     @property
     def cell_size(self) -> int:
@@ -70,7 +105,7 @@ class Entity(ABC):
         assert 0 <= self.south_west.x <= self.north_east.x
         assert 0 <= self.south_west.y <= self.north_east.y
         assert (self.north_east.y - self.south_west.y) == (self.north_east.x - self.south_west.x)
-        self.centre = Point((self.north_east.x - self.south_west.x) // 2, (self.north_east.y - self.south_west.y) // 2)
+        self.centre = Point((self.north_east.x + self.south_west.x) // 2, (self.north_east.y + self.south_west.y) // 2)
         self.north_length = self.north_east.y - self.centre.y
         self.east_length = self.north_east.x - self.centre.x
         self.south_length = self.centre.y - self.south_west.y
@@ -99,3 +134,16 @@ class Obstacle(Entity):
 class Robot(Entity):
     def __post_init__(self):
         super().__post_init__()
+
+    @property
+    def camera_position(self) -> Point:
+        """Camera is at front center of robot"""
+        centre_x = (self.north_east.x + self.south_west.x) // 2
+        if self.direction == Direction.NORTH:
+            return Point(centre_x, self.north_east.y)
+        elif self.direction == Direction.SOUTH:
+            return Point(centre_x, self.south_west.y)
+        elif self.direction == Direction.EAST:
+            return Point(self.north_east.x, centre_x)
+        else:  # WEST
+            return Point(self.south_west.x, centre_x)
