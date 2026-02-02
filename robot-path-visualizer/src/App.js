@@ -8,8 +8,8 @@ const GridVisualization = () => {
   const [obstacles, setObstacles] = useState([]);
   const [robot, setRobot] = useState({
     direction: 'EAST',
-    south_west: { x: 0, y: 0 },
-    north_east: { x: 1, y: 1 }
+    south_west: { x: 1, y: 1 },
+    north_east: { x: 2, y: 2 }
   });
   const [pathData, setPathData] = useState(null);
   const [animation, setAnimation] = useState({
@@ -211,7 +211,7 @@ const GridVisualization = () => {
       id: newId,
       direction: direction,
       south_west: { x, y },
-      north_east: { x: x + 1, y: y + 1 }
+      north_east: { x, y }
     };
     
     setObstacles([...obstacles, newObstacle]);

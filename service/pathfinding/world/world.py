@@ -53,42 +53,62 @@ class World:
                 0 <= entity.north_east.y < self.size)
 
     def __annotate_grid(self: World) -> None:
-        edge_error = 0
-        obstacle_error = 0
-
-        self.grid[0:(self.robot.north_length + edge_error), :] = False
-        self.grid[:, -(self.robot.east_length + edge_error):] = False
-        self.grid[-(self.robot.south_length + edge_error):, :] = False
-        self.grid[:, 0:(self.robot.west_length + edge_error)] = False
-
-        for obstacle in self.obstacles:
-            west_x = max(obstacle.south_west.x - self.robot.west_length - obstacle_error, 0)
-            east_x = min(obstacle.north_east.x + self.robot.east_length + obstacle_error, self.size)
-            south_y = max(obstacle.south_west.y - self.robot.south_length - obstacle_error, 0)
-            north_y = min(obstacle.north_east.y + self.robot.north_length + obstacle_error, self.size)
-
-            self.grid[west_x:east_x, south_y:north_y] = False
+        # Clear grid first
+        self.grid[:, :] = True
         
-        blocked = np.count_nonzero(self.grid)
-        total = self.size * self.size
+        # Block edges where robot would go out
+        robot_half_width = self.robot.east_length  # = 1 for 3-wide robot
+        robot_half_height = self.robot.north_length  # = 1 for 3-tall robot
+        
+        # Block left/right edges
+        self.grid[:, :robot_half_width] = False  # Left edge
+        self.grid[:, -robot_half_width:] = False  # Right edge
+        
+        # Block top/bottom edges  
+        self.grid[:robot_half_height, :] = False  # Bottom edge
+        self.grid[-robot_half_height:, :] = False  # Top edge
+        
+        # Block obstacle areas with robot clearance
+        for obstacle in self.obstacles:
+            # Block obstacle cell itself
+            ox1, oy1 = obstacle.south_west.x, obstacle.south_west.y
+            ox2, oy2 = obstacle.north_east.x, obstacle.north_east.y
+            
+            # Extend by robot half-size in all directions
+            block_x1 = max(0, ox1 - robot_half_width)
+            block_x2 = min(self.size, ox2 + robot_half_width + 1)
+            block_y1 = max(0, oy1 - robot_half_height)
+            block_y2 = min(self.size, oy2 + robot_half_height + 1)
+            
+            self.grid[block_y1:block_y2, block_x1:block_x2] = False
+        
+        print(f"Grid blocked: {np.count_nonzero(~self.grid)} cells")
 
-        print(
-            "GRID blocked=%d total=%d blocked_ratio=%.2f%%",
-            blocked,
-            total,
-            blocked / total * 100,
-        )
 
+    def contains(self, vector: Vector) -> bool:
+        """Check if the robot at this vector position is within world bounds"""
+        # Check robot center is within grid
+        if not (0 <= vector.x < self.size and 0 <= vector.y < self.size):
+            return False
+        
+        if not self.grid[vector.y, vector.x]:
+            print(f"  ❌ Cell ({vector.x},{vector.y}) is blocked in grid")
+            return False
 
-    def contains(self, centre: Point | Vector) -> bool:
-        ok = (
-            0 <= centre.x < self.size and
-            0 <= centre.y < self.size and
-            self.grid[centre.x, centre.y]
-        )
-        if not ok:
-            print("BLOCKED:", centre)
-        return ok
+        # Also check robot footprint doesn't exceed bounds
+        robot_width = self.robot.north_east.x - self.robot.south_west.x
+        robot_height = self.robot.north_east.y - self.robot.south_west.y
+        
+        half_width = robot_width // 2
+        half_height = robot_height // 2
+        
+        min_x = vector.x - half_width
+        max_x = vector.x + half_width
+        min_y = vector.y - half_height
+        max_y = vector.y + half_height
+        
+        return (0 <= min_x < self.size and 0 <= max_x < self.size and
+                0 <= min_y < self.size and 0 <= max_y < self.size)
 
     @property
     def cell_size(self) -> int:

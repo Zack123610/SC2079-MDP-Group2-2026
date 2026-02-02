@@ -77,7 +77,19 @@ def __trace(
     objective = current
 
     while current is not None:
-        path.append((current, moves.get(current)))
+        move = moves.get(current)
+        
+        if isinstance(move, Turn):
+            # For turns, only add the final position
+            path.append((current, move))
+        elif isinstance(move, Move):
+            # For moves, we might want intermediate points
+            # But straight() should return all points
+            for vector in move.vectors:
+                path.append((vector, None))  # Intermediate points
+            path.append((current, move))  # Final point
+        else:
+            path.append((current, move))
         current = source.get(current)
 
     path.reverse()
@@ -100,16 +112,20 @@ class __PriorityQueue:
 
 def __neighbours(world: World, current: Vector) -> Generator[tuple[Vector, Turn | Move], None, None]:
     for move in TurnInstruction:
-        path = turn(world, current, move)
+        path = turn(world, current, move)  # This should return List[Vector]
         if path is not None:
+            # path contains all arc points
+            # Yield final point for pathfinding, store all points in Turn object
             yield path[-1], Turn(move, path)
 
     for move in Straight:
         modifier = 1 if move == Straight.FORWARD else -1
-        for length in [5]:
+        # Try different movement lengths, starting with smallest
+        for length in [1, 2, 3]:  # 10cm, 20cm, 30cm movements
             path = straight(current, modifier, length)
             if all(map(lambda p: world.contains(p), path)):
                 yield path[-1], Move(move, path)
+                break  # Use the shortest valid movement
 
 
 def __heuristic(current: Vector, objectives: dict[Obstacle, tuple[Vector, set[Vector]]]) -> int:

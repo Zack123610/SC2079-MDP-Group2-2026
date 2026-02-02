@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathfinding.world.primitives import Direction, Vector
 from pathfinding.world.world import Obstacle, World, Robot
+import math
 
 
 def generate_objectives(world: World) -> dict[Obstacle, tuple[Vector, set[Vector]]]:
@@ -29,17 +30,17 @@ def __generate_objectives(world: World, obstacle: Obstacle) -> set[Vector]:
     """
     The minimum distance (in grid cells) between the obstacle and centre of objective, inclusive. (Total cm / cm per cell).
     """
-    minimum_gap = 20 // world.cell_size # 20 cm (2 cells)
+    minimum_gap = max(1, math.ceil(20 / world.cell_size))  # At least 20cm (2 cells)
     """
     The maximum distance (in grid cells) between the obstacle and centre of objective, exclusive. (Total cm / cm per cell).
     """
-    maximum_gap = 30 // world.cell_size
+    maximum_gap = math.ceil(30 / world.cell_size)     # Up to 30cm
 
     """
     The offset to the sides (in grid cells) between the obstacle and objective, inclusive. 
     (Total cm / cm per cell). This should be increased as the difference in sizes between obstacles & the robot increases.
     """
-    offset = 0 // world.cell_size
+    offset = math.ceil(10 / world.cell_size)               # 10cm offset
 
     objectives = set()
     for gap in range(minimum_gap, maximum_gap):
