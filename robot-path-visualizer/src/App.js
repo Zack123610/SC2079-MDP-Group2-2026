@@ -243,7 +243,15 @@ const GridVisualization = () => {
       });
 
       const data = await response.json();
-      setPathData(data.segments[0]);
+      if (data.segments && data.segments.length > 0) {
+        const combinedPath = data.segments.flatMap(seg => seg.path);
+        const combinedSegment = {
+          ...data.segments[0],
+          path: combinedPath,
+          instructions: data.segments.flatMap(seg => seg.instructions)
+        };
+        setPathData(combinedSegment);
+      }
       resetAnimation();
       
     } catch (error) {
