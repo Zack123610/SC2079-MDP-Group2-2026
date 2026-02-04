@@ -8,3 +8,7 @@
 
 # YOLO Model Files
 *.pt
+*.zip
+
+# YOLO Data Files
+data/

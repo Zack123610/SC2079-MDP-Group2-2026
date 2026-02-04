@@ -21,7 +21,7 @@ def main():
     parser = argparse.ArgumentParser(description="PC YOLO Inference Receiver")
     parser.add_argument("--host", required=True, help="Raspberry Pi IP address")
     parser.add_argument("--port", type=int, default=5555, help="Port number")
-    parser.add_argument("--model", default="yolo11n.pt", help="YOLO model path")
+    parser.add_argument("--model", default="yolo26n.pt", help="YOLO model path")
     parser.add_argument("--conf", type=float, default=0.5, help="Confidence threshold")
     parser.add_argument("--show", action="store_true", default=True, help="Show video window")
     args = parser.parse_args()
