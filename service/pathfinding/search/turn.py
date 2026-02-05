@@ -5,76 +5,101 @@ from pathfinding.world.world import World
 
 def turn(world: World, current: Vector, move: TurnInstruction) -> list[Vector] | None:
     """
-    Simplified turn for grid navigation.
-    Generates points that approximate a turning arc within grid constraints.
+    Generate turning arc that starts from current position.
+    Returns ALL points along the arc.
     """
-    
     is_forward = move in [TurnInstruction.FORWARD_LEFT, TurnInstruction.FORWARD_RIGHT]
     is_left = move in [TurnInstruction.FORWARD_LEFT, TurnInstruction.BACKWARD_LEFT]
     
-    # Get turn template based on direction and turn type
-    turn_template = _get_turn_template(current.direction, is_left, is_forward)
+    # Get final direction after turn
+    new_direction = _get_new_direction(current.direction, is_left, is_forward)
     
-    # Apply template to current position
-    arc_points = []
-    for dx, dy, dir_change in turn_template:
-        new_x = current.x + dx
-        new_y = current.y + dy
-        
-        # Create intermediate direction (simplified)
-        if dir_change == 0:
-            new_dir = current.direction
-        elif dir_change == 1:
-            new_dir = _get_new_direction(current.direction, is_left, is_forward)
-        else:
-            # Gradual direction change (simplified)
-            new_dir = current.direction if dx == 0 else _get_new_direction(current.direction, is_left, is_forward)
-        
-        point = Vector(new_dir, new_x, new_y)
-        arc_points.append(point)
-    
+    # For forward turns, we move while turning
+    return _generate_turn_arc(current, new_direction, is_left, is_forward, world)
+
+def _generate_turn_arc(
+    start: Vector,
+    end_dir: Direction,
+    is_left: bool,
+    is_forward: bool,
+    world: World
+) -> list[Vector] | None:
+    points: list[Vector] = []
+
+    # Step 1: move forward in current direction
+    dx, dy = {
+        Direction.NORTH: (0, 1),
+        Direction.EAST: (1, 0),
+        Direction.SOUTH: (0, -1),
+        Direction.WEST: (-1, 0),
+    }[start.direction]
+
+    # Backward = invert movement
+    if not is_forward:
+        dx, dy = -dx, -dy
+
+    mid = Vector(start.direction, start.x + dx, start.y + dy)
+
+    # Step 2: final position after turn (same cell, new direction)
+    end = Vector(end_dir, mid.x, mid.y)
+
     # Validate
-    for point in arc_points:
-        if not world.contains(point):
+    for p in (mid, end):
+        if not world.contains(p):
             return None
-    
-    return arc_points
+
+    # Remove redundant points
+    points.append(start)
+    if mid != start:
+        points.append(mid)
+    if end.direction != mid.direction:
+        points.append(end)
+
+    return points
 
 # Helper functions
 def _get_new_direction(current_dir: Direction, is_left: bool, is_forward: bool) -> Direction:
     """Calculate final direction after turn."""
-    if is_forward:
-        if is_left:  # Forward-left
-            directions = {
-                Direction.NORTH: Direction.WEST,
-                Direction.EAST: Direction.NORTH,
-                Direction.SOUTH: Direction.EAST,
-                Direction.WEST: Direction.SOUTH
-            }
-        else:  # Forward-right
-            directions = {
-                Direction.NORTH: Direction.EAST,
-                Direction.EAST: Direction.SOUTH,
-                Direction.SOUTH: Direction.WEST,
-                Direction.WEST: Direction.NORTH
-            }
-    else:  # Backward
-        if is_left:  # Backward-left
-            directions = {
-                Direction.NORTH: Direction.EAST,
-                Direction.EAST: Direction.SOUTH,
-                Direction.SOUTH: Direction.WEST,
-                Direction.WEST: Direction.NORTH
-            }
-        else:  # Backward-right
-            directions = {
-                Direction.NORTH: Direction.WEST,
-                Direction.EAST: Direction.NORTH,
-                Direction.SOUTH: Direction.EAST,
-                Direction.WEST: Direction.SOUTH
-            }
-    return directions[current_dir]
     
+    # Standard turn mapping (looking from above)
+    if is_forward:
+        if is_left:
+            # Forward-left: turn 90° left while moving forward
+            return {
+                Direction.NORTH: Direction.WEST,
+                Direction.EAST: Direction.NORTH,
+                Direction.SOUTH: Direction.EAST,
+                Direction.WEST: Direction.SOUTH
+            }[current_dir]
+        else:
+            # Forward-right: turn 90° right while moving forward
+            return {
+                Direction.NORTH: Direction.EAST,
+                Direction.EAST: Direction.SOUTH,
+                Direction.SOUTH: Direction.WEST,
+                Direction.WEST: Direction.NORTH
+            }[current_dir]
+    else:  # BACKWARD
+        if is_left:
+            # Backward-left: reverse + turn left
+            # Equivalent to: move backward, turn vehicle left
+            # Actually, when moving backward and turning left,
+            # the rear becomes the front, so left becomes right!
+            return {
+                Direction.NORTH: Direction.EAST,   # Was WEST, now EAST
+                Direction.EAST: Direction.SOUTH,   # Was NORTH, now SOUTH
+                Direction.SOUTH: Direction.WEST,   # Was EAST, now WEST
+                Direction.WEST: Direction.NORTH    # Was SOUTH, now NORTH
+            }[current_dir]
+        else:
+            # Backward-right
+            return {
+                Direction.NORTH: Direction.WEST,   # Was EAST, now WEST
+                Direction.EAST: Direction.NORTH,   # Was SOUTH, now NORTH
+                Direction.SOUTH: Direction.EAST,   # Was WEST, now EAST
+                Direction.WEST: Direction.SOUTH    # Was NORTH, now SOUTH
+            }[current_dir]
+  
 def _get_turn_template(direction: Direction, is_left: bool, is_forward: bool):
     """Pre-defined turn patterns for different directions."""
     

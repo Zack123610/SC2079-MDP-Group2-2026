@@ -6,6 +6,7 @@ const CELL_SIZE = 40; // pixels
 const GridVisualization = () => {
   // State
   const [obstacles, setObstacles] = useState([]);
+  const [allSegments, setAllSegments] = useState([]);
   const [robot, setRobot] = useState({
     direction: 'EAST',
     south_west: { x: 1, y: 1 },
@@ -73,41 +74,19 @@ const GridVisualization = () => {
 
   // Get photo positions (where images would be taken)
   const getPhotoPositions = () => {
-    if (!pathData?.instructions) return [];
+    if (!allSegments.length) return [];
     
-    const photos = [];
-    const instructions = pathData.instructions;
-    
-    // Find CAPTURE_IMAGE instructions and their positions
-    let currentIndex = 0;
-    
-    instructions.forEach((inst, idx) => {
-      if (inst === 'CAPTURE_IMAGE') {
-        // Find the corresponding position in the path
-        if (currentIndex < pathPoints.length) {
-          const point = pathPoints[currentIndex];
-          const robotPos = getRobotPosition(currentIndex);
-          const camera = getCameraInfo(robotPos);
-          
-          // Photo is taken at camera position
-          photos.push({
-            position: camera.cameraPos,
-            direction: point.direction,
-            imageId: pathData.image_id,
-            step: currentIndex
-          });
-        }
+    return allSegments.map(segment => {
+      if (segment.path && segment.path.length > 0) {
+        const lastPoint = segment.path[segment.path.length - 1];
+        return {
+          position: { x: lastPoint.x, y: lastPoint.y },
+          imageId: segment.image_id,
+          step: 0 // Could be enhanced to find actual step in path
+        };
       }
-      // Move forward in path based on instruction
-      if (typeof inst === 'object' && inst.move === 'FORWARD') {
-        currentIndex += Math.ceil(inst.amount / 10); // Convert cm to cells
-      } else if (inst === 'FORWARD_LEFT' || inst === 'FORWARD_RIGHT' || 
-                 inst === 'BACKWARD_LEFT' || inst === 'BACKWARD_RIGHT') {
-        currentIndex += 3; // Approximate cells for turn
-      }
-    });
-    
-    return photos;
+      return null;
+    }).filter(pos => pos !== null);
   };
 
   // Animation control
@@ -251,6 +230,8 @@ const GridVisualization = () => {
           instructions: data.segments.flatMap(seg => seg.instructions)
         };
         setPathData(combinedSegment);
+
+        setAllSegments(data.segments);
       }
       resetAnimation();
       
