@@ -9,7 +9,7 @@ const GridVisualization = () => {
   const [allSegments, setAllSegments] = useState([]);
   const [robot, setRobot] = useState({
     direction: 'EAST',
-    south_west: { x: 1, y: 1 },
+    south_west: { x: 0, y: 0 },
     north_east: { x: 2, y: 2 }
   });
   const [pathData, setPathData] = useState(null);
@@ -204,7 +204,7 @@ const GridVisualization = () => {
         robot: {
           direction: "EAST",
           south_west: { x: 0, y: 0 },
-          north_east: { x: 1, y: 1 }
+          north_east: { x: 2, y: 2 }
         },
         obstacles: obstacles.map(obs => ({
           image_id: obs.id,
