@@ -141,6 +141,7 @@ public class BluetoothSetUp extends Fragment {
         // Get bluetooth adapter
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
+        //finds the bluetooth switch
         Switch bluetoothSwitch = root.findViewById(R.id.bluetoothSwitch);
         if(mBluetoothAdapter.isEnabled()){
             bluetoothSwitch.setChecked(true);

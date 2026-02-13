@@ -86,9 +86,8 @@ public class Home extends Fragment {
         sharedPreferences = getActivity().getSharedPreferences("Shared Preferences",
                 Context.MODE_PRIVATE);
 
-
-
-        SectionsPagerAdapter sectionsPagerAdapter = new SectionsPagerAdapter(getActivity().getSupportFragmentManager(),
+        SectionsPagerAdapter sectionsPagerAdapter = new SectionsPagerAdapter(getActivity()
+                .getSupportFragmentManager(),
                 FragmentPagerAdapter.BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT);
 
         sectionsPagerAdapter.addFragment(new MappingFragment(),"MAP CONFIG");
@@ -243,26 +242,6 @@ public class Home extends Fragment {
     }
 
 
-//        if (BluetoothConnectionService.BluetoothConnectionStatus) {
-////            JSONObject jsonObj = message.getJSONObject("data");
-//        JSONObject js=new JSONObject();
-//        try {
-//            JSONArray ja=new JSONArray();
-//            js.put("key", "floor");
-//            ja.put(js);
-//            BluetoothConnectionService.write(ja);
-//
-//        }
-//        catch (JSONException e) {
-//            showLog("lol!");
-//
-//
-//            //BluetoothConnectionService.write({"key":"test","value":"hello"});
-//        }
-//        //showLog(message);
-//        showLog("Exiting printMessage");
-//    }
-
     // Purely to display a message on the chat box - NOT SENT via BT
     public static void refreshMessageReceivedNS(String message){
         BluetoothCommunications.getMessageReceivedTextView().append(message+ "\n");
@@ -346,17 +325,13 @@ public class Home extends Fragment {
         @Override
         public void onReceive(Context context, Intent intent) {
             PathTranslator pathTranslator = new PathTranslator(gridMap);    // For real-time updating on displayed gridmap
+
+
+            //receives string that is wrapped in intent from local broadcast from bluetoothconnectionservice.java
             String message = intent.getStringExtra("receivedMessage");
             showLog("receivedMessage: message --- " + message);
 
             String[] cmdd = message.split(",");
-
-//            if (message.contains(" "))
-//            {
-//                message= Arrays.toString(message.split(" "));
-//            }
-//            showLog("cmd1 --- " + cmdd[1]);
-//            showLog("cmd2 --- " + cmdd[2]);
 
 
             int[] global_store = gridMap.getCurCoord();
@@ -398,7 +373,8 @@ public class Home extends Fragment {
                 try {
                     String[] cmd = message.split(",");
                     String temp2="-1";
-                    BluetoothCommunications.getMessageReceivedTextView().append("Obstacle no: " + cmd[1]+ "TARGET ID: " + cmd[2] + "\n");
+                    BluetoothCommunications.getMessageReceivedTextView().append("Obstacle no: "
+                            + cmd[1]+ "TARGET ID: " + cmd[2] + "\n");
 
 //                    if (cmd[2].contains("STOP"))
 //                    {

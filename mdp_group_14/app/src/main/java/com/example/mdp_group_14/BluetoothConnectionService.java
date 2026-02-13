@@ -21,7 +21,7 @@ import java.util.UUID;
 
 public class BluetoothConnectionService {
     private static final String TAG = "Debugging Tag";
-    private static final String appName = "MDP_Grp_14";
+    private static final String appName = "MDP_Grp_2";
     private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     private final BluetoothAdapter mBluetoothAdapter;
@@ -49,7 +49,7 @@ public class BluetoothConnectionService {
     private class AcceptThread extends Thread {
         private final BluetoothServerSocket ServerSocket;
 
-        public AcceptThread() {
+        public AcceptThread() { //Acts as a server. It sits and listens for incoming connection requests from other devices (like RPi)
             BluetoothServerSocket tmp = null;
 
             try {
