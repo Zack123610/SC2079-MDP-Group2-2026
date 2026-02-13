@@ -273,7 +273,8 @@ public class PathTranslator {
                         showLog("Unable to move forward");
                     }
 
-                    Home.printMessage("f");
+                    //Home.printMessage("f");// sending to Bluetooth moves times
+                    Home.printMessage("MOVE, 10, FORWARD");
 
                     try {
                         Thread.sleep(MILLI_DELAY);
