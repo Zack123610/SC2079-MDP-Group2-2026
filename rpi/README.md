@@ -60,16 +60,21 @@ Android App  --[Bluetooth RFCOMM]-->  Raspberry Pi  --[USB Serial]-->  STM32
    - Position message: `ROBOT|<y>,<x>,<DIRECTION>`
    - Movement command: `MOVE,<distance_cm>,<DIRECTION>`
    - Turn command:     `TURN,<LEFT|RIGHT>`
-3. Raspberry Pi parses these messages (to be implemented) and converts them into **low-level movement frames** for STM32.
-4. STM32 executes the motion and periodically reports its pose (angle + accumulated distance) back to the Pi in 4-byte status frames (planned).
-5. Once the accumulated distance reaches the commanded distance, Raspberry Pi will issue a **STOP** command to STM32.
+3. Raspberry Pi **parses** these messages and converts them into **4-byte binary command frames** for STM32:
+   - `MOVE,30,FORWARD` -> frame `01 1E 00 00` (direction=1, distance=30 LE, pad)
+   - `TURN,LEFT`       -> frame `03 00 00 00` (direction=3, distance=0, pad)
+4. STM32 executes the motion and periodically sends back **4-byte status frames** reporting its angle and accumulated distance.
+5. Once the accumulated distance reaches the commanded distance, Raspberry Pi automatically sends a **STOP** frame (`00 00 00 00`).
 
-> Note: The exact 4-byte encoding between Raspberry Pi and STM32 is still being finalised, but the intended semantics are:
->
-> - **Pi → STM32 (command frame, 4 bytes)**  
->   `[direction][distance_byte1][distance_byte2][padding]`
-> - **STM32 → Pi (status frame, 4 bytes)**  
->   `[angle][distance_byte1][distance_byte2][padding]`
+### 4-byte frame encoding (little-endian)
+
+| Direction | Pi -> STM32 (command) | STM32 -> Pi (status) |
+|-----------|-----------------------|----------------------|
+| Byte 0    | Direction code (0-4)  | Angle (Z-axis)       |
+| Byte 1-2  | Distance (uint16 cm)  | Accum distance (uint16 cm) |
+| Byte 3    | Padding (0x00)        | Padding (0x00)       |
+
+Direction codes: `0`=STOP, `1`=FORWARD, `2`=BACKWARD, `3`=LEFT, `4`=RIGHT
 
 ## Files
 

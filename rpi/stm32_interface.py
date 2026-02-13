@@ -199,6 +199,102 @@ class STM32Interface:
             messages.append(msg)
         return messages
     
+    def send_raw(self, data: bytes) -> bool:
+        """
+        Send raw bytes to STM32 (no newline, no encoding).
+
+        Useful for the 4-byte binary movement frames.
+
+        Args:
+            data: Raw bytes to send.
+
+        Returns:
+            True if send successful, False otherwise.
+        """
+        if not self.is_connected:
+            print("Error: Not connected to STM32")
+            return False
+
+        try:
+            self.serial.write(data)
+            self.serial.flush()
+            print(f"Sent raw to STM32: {data.hex()}")
+            return True
+        except serial.SerialException as e:
+            print(f"Send raw error: {e}")
+            return False
+
+    def receive_raw(self, num_bytes: int = 4, timeout: Optional[float] = None) -> Optional[bytes]:
+        """
+        Receive an exact number of raw bytes from STM32.
+
+        Useful for reading 4-byte binary status frames.
+
+        Args:
+            num_bytes: Number of bytes to read (default: 4).
+            timeout:   Optional timeout override in seconds.
+
+        Returns:
+            bytes of length *num_bytes*, or None on timeout / error.
+        """
+        if not self.is_connected:
+            print("Error: Not connected to STM32")
+            return None
+
+        try:
+            if timeout is not None:
+                old_timeout = self.serial.timeout
+                self.serial.timeout = timeout
+
+            data = self.serial.read(num_bytes)
+
+            if timeout is not None:
+                self.serial.timeout = old_timeout
+
+            if data and len(data) == num_bytes:
+                print(f"Received raw from STM32: {data.hex()}")
+                return data
+            return None
+        except serial.SerialException as e:
+            print(f"Receive raw error: {e}")
+            return None
+
+    def receive_all_raw(self, frame_size: int = 4) -> list[bytes]:
+        """
+        Read all complete raw frames currently buffered from STM32.
+
+        This is non-blocking: it checks ``serial.in_waiting`` to see how
+        many bytes are available and reads as many complete *frame_size*
+        frames as possible without waiting.
+
+        Args:
+            frame_size: Size of one frame in bytes (default: 4).
+
+        Returns:
+            List of ``bytes`` objects, each of length *frame_size*.
+            Empty list if nothing is available.
+        """
+        if not self.is_connected:
+            return []
+
+        frames: list[bytes] = []
+        try:
+            available = self.serial.in_waiting
+            # Only read complete frames
+            num_frames = available // frame_size
+            for _ in range(num_frames):
+                chunk = self.serial.read(frame_size)
+                if chunk and len(chunk) == frame_size:
+                    frames.append(chunk)
+                else:
+                    break
+        except serial.SerialException as e:
+            print(f"receive_all_raw error: {e}")
+
+        if frames:
+            print(f"Received {len(frames)} raw frame(s) from STM32")
+        return frames
+
     def send_and_receive(
         self, 
         message: str, 
