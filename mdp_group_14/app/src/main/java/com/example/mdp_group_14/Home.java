@@ -456,7 +456,7 @@ public class Home extends Fragment {
                 timerHandler.removeCallbacks(ControlFragment.timerRunnableFastest);
             }
             else{
-                BluetoothCommunications.getMessageReceivedTextView().append("unknown message received");
+                //BluetoothCommunications.getMessageReceivedTextView().append("unknown message received");
                 showLog("unknown message received");
             }
         }
