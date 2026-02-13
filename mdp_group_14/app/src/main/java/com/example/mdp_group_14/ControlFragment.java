@@ -141,7 +141,7 @@ public class ControlFragment extends Fragment {
                     gridMap.moveRobot("right");
                     Home.refreshLabel();
                     //Home.printMessage("fr");
-                    Home.printMessage("MOVE,10,FORWARD_RIGHT");
+                    Home.printMessage("TURN,FORWARD_RIGHT");
 //                    showLog("test");
                     System.out.println(Arrays.toString(gridMap.getCurCoord()));
                 }
@@ -158,7 +158,7 @@ public class ControlFragment extends Fragment {
                     gridMap.moveRobot("backright");
                     Home.refreshLabel();
                     //Home.printMessage("br");
-                    Home.printMessage("MOVE,10,BACKWARD_RIGHT");
+                    Home.printMessage("TURN,BACKWARD_RIGHT");
                     System.out.println(Arrays.toString(gridMap.getCurCoord()));
                 }
                 else
@@ -196,7 +196,7 @@ public class ControlFragment extends Fragment {
                     Home.refreshLabel();
                     updateStatus("turning left");
                     //Home.printMessage("fl");
-                    Home.printMessage("MOVE,10,FORWARD_LEFT");
+                    Home.printMessage("TURN,FORWARD_LEFT");
                 }
                 else
                     updateStatus("Please press 'SET START POINT'");
@@ -212,7 +212,7 @@ public class ControlFragment extends Fragment {
                     Home.refreshLabel();
                     updateStatus("turning left");
                     //Home.printMessage("bl");
-                    Home.printMessage("MOVE,10,BACKWARD_LEFT");
+                    Home.printMessage("TURN,BACKWARD_LEFT");
                 }
                 else
                     updateStatus("Please press 'SET START POINT'");
