@@ -88,43 +88,49 @@ DIR_NAME: dict[int, str] = {v: k for k, v in DIRECTION_MAP.items()}
 # 4-byte frame helpers
 # ---------------------------------------------------------------------------
 
-def build_command_frame(direction: int, distance: int) -> bytes:
+def build_command_frame(direction: int, distance: int) -> str:
     """
-    Build a 4-byte command frame to send to STM32.
+    Build the command string to send to STM32.
 
-    Frame layout (4 bytes, little-endian):
-        Byte 0 : Direction code  (uint8, 0-4)
-        Byte 1 : Distance low    }
-        Byte 2 : Distance high   }  uint16, 0-200 cm
-        Byte 3 : Padding (0x00)
+    Format: "<direction><distance_3digits>" (ASCII).
+    - 1 character: direction code '0'–'4' (STOP, FORWARD, BACKWARD, LEFT, RIGHT).
+    - 3 characters: distance in cm, zero-padded (e.g. 030 for 30 cm).
+
+    Examples:
+        MOVE,30,FORWARD  -> "1030"  (1=forward, 030=30 cm)
+        TURN,LEFT        -> "3000"  (3=left, 000=0 cm)
+        STOP             -> "0000"
 
     Args:
         direction: Direction code (0-4).
         distance:  Distance in centimetres (0-200).
 
     Returns:
-        4-byte ``bytes`` object.
+        4-character string, e.g. "1030".
     """
     direction = max(0, min(direction, 4))
     distance = max(0, min(distance, 200))
-    return struct.pack("<BHB", direction, distance, 0x00)
+    return f"{direction}{distance:03d}"
 
 
-def parse_status_frame(data: bytes) -> tuple[int, int]:
-    """
-    Parse a 4-byte status frame received from STM32.
-
-    Frame layout (4 bytes, little-endian):
-        Byte 0 : Angle (Z-axis rotation, uint8)
-        Byte 1 : Accumulated distance low    }
-        Byte 2 : Accumulated distance high   }  uint16, cm
-        Byte 3 : Padding
-
-    Returns:
-        (angle, accumulated_distance_cm)
-    """
-    angle, accum_dist, _pad = struct.unpack("<BHB", data)
-    return angle, accum_dist
+# ---------------------------------------------------------------------------
+# STM32 status parsing (currently unused – Pi does not receive from STM)
+# ---------------------------------------------------------------------------
+# def parse_status_frame(data: bytes) -> tuple[int, int]:
+#     """
+#     Parse a 4-byte status frame received from STM32.
+#
+#     Frame layout (4 bytes, little-endian):
+#         Byte 0 : Angle (Z-axis rotation, uint8)
+#         Byte 1 : Accumulated distance low    }
+#         Byte 2 : Accumulated distance high   }  uint16, cm
+#         Byte 3 : Padding
+#
+#     Returns:
+#         (angle, accumulated_distance_cm)
+#     """
+#     angle, accum_dist, _pad = struct.unpack("<BHB", data)
+#     return angle, accum_dist
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +222,7 @@ def parse_android_message(message: str) -> Optional[tuple[int, int]]:
 
 
 # ---------------------------------------------------------------------------
-# Movement execution  (send command -> poll status -> auto-stop)
+# Movement execution: Pi only forwards command to STM32 (no receive from STM)
 # ---------------------------------------------------------------------------
 
 def execute_movement(
@@ -226,76 +232,23 @@ def execute_movement(
     bt_reply_fn: Optional[Callable[[str], None]] = None,
 ) -> bool:
     """
-    Send a movement command to the STM32 and block until it completes.
-
-    Steps:
-      1. Pack the command into a 4-byte frame and send it.
-      2. Poll 4-byte status frames from the STM32.
-      3. When accumulated distance >= target distance, send a STOP frame.
-
-    Args:
-        stm:           Connected STM32Interface instance.
-        direction:     Direction code (DIR_FORWARD, etc.).
-        distance:      Target distance in cm (0-200).  0 means "turn only".
-        bt_reply_fn:   Optional callback ``fn(status_string)`` to relay
-                       status back to Android.
-
-    Returns:
-        True if movement completed successfully, False on timeout / error.
+    Parse Android command into STM32 format and send to STM32.
+    Raspberry Pi does not receive or process any message from STM board.
     """
     frame = build_command_frame(direction, distance)
     dir_name = DIR_NAME.get(direction, str(direction))
     print(f"[CMD] Sending: direction={dir_name}, distance={distance} cm, "
-          f"frame={frame.hex()}")
+          f"frame=\"{frame}\"")
 
-    if not stm.send_raw(frame):
-        print("[CMD] Failed to send command frame to STM32")
+    if not stm.send(frame, add_newline=False):
+        print("[CMD] Failed to send command to STM32")
+        if bt_reply_fn:
+            bt_reply_fn("SEND_FAIL")
         return False
 
-    # --- Turn-only (distance == 0) -------------------------------------------
-    # For a pure turn we just wait for a single acknowledgement frame.
-    if distance == 0:
-        status = stm.receive_raw(4, timeout=5.0)
-        if status:
-            angle, accum = parse_status_frame(status)
-            print(f"[CMD] Turn acknowledged. angle={angle}, accum_dist={accum} cm")
-            if bt_reply_fn:
-                bt_reply_fn(f"DONE,{dir_name},angle={angle}")
-        else:
-            print("[CMD] No status received after turn command")
-            if bt_reply_fn:
-                bt_reply_fn(f"NO_ACK,{dir_name}")
-        return True
-
-    # --- Linear movement (distance > 0) --------------------------------------
-    start = time.time()
-    while time.time() - start < STM_POLL_TIMEOUT:
-        status = stm.receive_raw(4, timeout=1.0)
-        if status is None:
-            # No data yet – keep polling
-            time.sleep(STM_POLL_INTERVAL)
-            continue
-
-        angle, accum_dist = parse_status_frame(status)
-        print(f"[CMD] Status: angle={angle}, accum_dist={accum_dist}/{distance} cm")
-
-        if accum_dist >= distance:
-            # Target reached – issue STOP
-            stop_frame = build_command_frame(DIR_STOP, 0)
-            stm.send_raw(stop_frame)
-            print("[CMD] Movement complete. Sent STOP.")
-            if bt_reply_fn:
-                bt_reply_fn(f"DONE,{dir_name},{accum_dist}")
-            return True
-
-        time.sleep(STM_POLL_INTERVAL)
-
-    # Timeout – send STOP as a safety measure
-    print("[CMD] Timeout waiting for movement completion! Sending STOP.")
-    stm.send_raw(build_command_frame(DIR_STOP, 0))
     if bt_reply_fn:
-        bt_reply_fn(f"TIMEOUT,{dir_name}")
-    return False
+        bt_reply_fn("OK")
+    return True
 
 
 # ---------------------------------------------------------------------------
