@@ -223,10 +223,10 @@ public class PathTranslator {
 //            } catch(Exception e) {}
 
             //set commandType for <DIRECTION>
-            String direction = stmCommand.split(",")[1];
+            String direction = stmCommand.split(",")[2].replace("\n","");
             showLog("directions"+direction);
 
-            commandValue = Integer.valueOf(stmCommand.split(",")[2].replace("\n",""));
+            //commandValue = Integer.valueOf(stmCommand.split(",")[2].replace("\n",""));
 
 //showLog(String.valueOf(Integer.parseInt(stmCommand.split(",")[2])));
 
@@ -274,7 +274,7 @@ public class PathTranslator {
                     }
 
                     //Home.printMessage("f");// sending to Bluetooth moves times
-                    Home.printMessage("MOVE, 10, FORWARD");
+                    Home.printMessage("MOVE,10,FORWARD");
 
                     try {
                         Thread.sleep(MILLI_DELAY);
