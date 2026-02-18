@@ -355,8 +355,8 @@ if __name__ == "__main__":
                 if msg.lower() == 'quit':
                     break
                 stm.send(msg)
-                response = stm.receive(timeout=2.0)
-                if response:
-                    print(f"Response: {response}")
+                # response = stm.receive(timeout=2.0)
+                # if response:
+                #     print(f"Response: {response}")
         else:
             print("Could not connect to STM32. Check connection and try again.")

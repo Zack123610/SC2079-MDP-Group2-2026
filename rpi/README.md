@@ -2,6 +2,21 @@
 
 Central communication hub that receives commands from Android via Bluetooth and forwards them to the STM32 board.
 
+## Module Structure
+
+```
+rpi/
+├── main.py                 # Entry point – routing logic only
+├── bluetooth_interface.py  # Bluetooth RFCOMM link to Android tablet
+└── stm32_interface.py      # USB serial link to STM32 board
+```
+
+| Module | Responsibility |
+|--------|---------------|
+| `main.py` | Starts both interfaces, parses Android messages, routes commands to STM32 |
+| `bluetooth_interface.py` | Opens /dev/rfcomm0 (or PyBluez server), exposes `readline()` / `send()` |
+| `stm32_interface.py` | Opens /dev/ttyACM0 (auto-detected), exposes `send()` / `receive()` |
+
 ## Setup
 
 ### 1. Install Dependencies
@@ -26,13 +41,13 @@ sudo hciconfig hci0 piscan
 
 ### 3. Bind RFCOMM Channel (Recommended)
 
-On Raspberry Pi, it is common to let a system service (or a simple startup script) create the RFCOMM serial device:
+Let a system service (or startup script) create the RFCOMM serial device before running the program:
 
 ```bash
 sudo rfcomm listen /dev/rfcomm0 1
 ```
 
-This exposes the Bluetooth link as a serial port (`/dev/rfcomm0`), which `rpi/main.py` reads and writes like a normal UART.
+This exposes the Bluetooth link as `/dev/rfcomm0`, which `bluetooth_interface.py` reads and writes like a normal UART.
 
 ## Usage
 
@@ -41,44 +56,52 @@ cd rpi
 python main.py
 ```
 
-By default:
-- `main.py` connects to STM32 via USB (`stm32_interface.py`),
-- then listens for Android messages on `/dev/rfcomm0` and forwards them.
+By default `main.py`:
+1. Connects to the STM32 via USB (`stm32_interface.py`).
+2. Opens `/dev/rfcomm0` for Android communication (`bluetooth_interface.py`).
+3. Loops: reads one line from Android → parses → sends command to STM32.
 
-The legacy PyBluez RFCOMM server (which binds and listens directly in Python) is still available behind a flag in `main.py` if you prefer that flow.
+To use the legacy PyBluez RFCOMM server instead (Python creates the socket itself), set in `main.py`:
+
+```python
+USE_PYBLUEZ_SERVER = True
+```
 
 ## Message Flow
 
 ```
 Android App  --[Bluetooth RFCOMM]-->  Raspberry Pi  --[USB Serial]-->  STM32
-                                      (/dev/rfcomm0)      (ttyACM0/ttyUSB0)
-                                             main.py
+             bluetooth_interface.py       main.py       stm32_interface.py
+             (/dev/rfcomm0)                             (/dev/ttyACM0)
 ```
 
-1. Android connects to Pi via Bluetooth.
-2. Android sends **high-level command strings**, for example:
+1. Android sends a **high-level command string** (newline-terminated):
    - Position message: `ROBOT|<y>,<x>,<DIRECTION>`
    - Movement command: `MOVE,<distance_cm>,<DIRECTION>`
    - Turn command:     `TURN,<LEFT|RIGHT>`
-3. Raspberry Pi **parses** these messages and converts them into **4-byte binary command frames** for STM32:
-   - `MOVE,30,FORWARD` -> frame `01 1E 00 00` (direction=1, distance=30 LE, pad)
-   - `TURN,LEFT`       -> frame `03 00 00 00` (direction=3, distance=0, pad)
-4. STM32 executes the motion and periodically sends back **4-byte status frames** reporting its angle and accumulated distance.
-5. Once the accumulated distance reaches the commanded distance, Raspberry Pi automatically sends a **STOP** frame (`00 00 00 00`).
 
-### 4-byte frame encoding (little-endian)
+2. `main.py` parses the message and builds a **4-character ASCII command**:
 
-| Direction | Pi -> STM32 (command) | STM32 -> Pi (status) |
-|-----------|-----------------------|----------------------|
-| Byte 0    | Direction code (0-4)  | Angle (Z-axis)       |
-| Byte 1-2  | Distance (uint16 cm)  | Accum distance (uint16 cm) |
-| Byte 3    | Padding (0x00)        | Padding (0x00)       |
+   | Android message   | STM32 command | Meaning              |
+   |-------------------|---------------|----------------------|
+   | `MOVE,30,FORWARD` | `1030`        | Forward 30 cm        |
+   | `MOVE,50,BACKWARD`| `2050`        | Backward 50 cm       |
+   | `TURN,LEFT`       | `3000`        | Turn left            |
+   | `TURN,RIGHT`      | `4000`        | Turn right           |
+   | *(STOP)*          | `0000`        | Stop                 |
 
-Direction codes: `0`=STOP, `1`=FORWARD, `2`=BACKWARD, `3`=LEFT, `4`=RIGHT
+   Format: `<direction_code><distance_3digits>`
+   - `0` = STOP, `1` = FORWARD, `2` = BACKWARD, `3` = LEFT, `4` = RIGHT
 
-## Files
+3. `stm32_interface.py` sends the command string over USB serial.
+4. Raspberry Pi replies `OK` (or `SEND_FAIL`) to Android.
 
-| File | Description |
-|------|-------------|
-| `main.py` | Main program – reads Android commands from `/dev/rfcomm0` (or legacy PyBluez server) and forwards to STM32 |
-| `stm32_interface.py` | STM32 USB serial communication module (auto-detects `/dev/ttyACM*`) |
+## Testing Individual Modules
+
+```bash
+# Test Bluetooth interface only (echo server)
+python bluetooth_interface.py
+
+# Test STM32 interface only (interactive send/receive)
+python stm32_interface.py
+```
