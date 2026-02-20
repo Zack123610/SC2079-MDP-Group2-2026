@@ -85,9 +85,6 @@ public class GridMap extends View {
     // Robot Configuration
     private static final int ROBOT_SIZE = 3;
 
-    public int movesRx = 0;
-    public int moves = 0;
-
     public ArrayList<String[]> ITEM_LIST = new ArrayList<>(Arrays.asList(
             new String[20], new String[20], new String[20], new String[20], new String[20],
             new String[20], new String[20], new String[20], new String[20], new String[20],
@@ -218,7 +215,6 @@ public class GridMap extends View {
             return;
         }
 
-        // Draw visual 3x3 boundary
         for (int y = androidRowCoord - ROBOT_SIZE; y <= androidRowCoord; y++) {
             canvas.drawLine(cells[curCoord[0] - (ROBOT_SIZE-1)][21 - y - 2].startX, cells[curCoord[0]][21 - y - 2].startY, cells[curCoord[0]][21 - y - 2].endX, cells[curCoord[0]][21 - y - 2].startY, robotColor);
         }
@@ -283,7 +279,6 @@ public class GridMap extends View {
         this.updateRobotAxis(col, row, direction);
         int convertedRow = this.convertRow(row);
         
-        // Fill all 9 cells for a 3x3 footprint
         for (int x = col - (ROBOT_SIZE-1); x <= col; x++)
             for (int y = convertedRow - (ROBOT_SIZE-1); y <= convertedRow; y++)
                 cells[x][y].setType("robot");
@@ -301,7 +296,6 @@ public class GridMap extends View {
         int convertedRow = this.convertRow(oldRow);
         if (convertedRow < 0) return;
         
-        // Clear all 9 cells for a 3x3 footprint
         for (int x = oldCol - (ROBOT_SIZE-1); x <= oldCol; x++)
             for (int y = convertedRow - (ROBOT_SIZE-1); y <= convertedRow; y++)
                 cells[x][y].setType("explored");
@@ -351,11 +345,108 @@ public class GridMap extends View {
     }
 
     @Override
+    public boolean onDragEvent(DragEvent dragEvent) {
+        clipData = dragEvent.getClipData();
+        localState = dragEvent.getLocalState();
+        int endColumn, endRow;
+        
+        if (dragEvent.getAction() == DragEvent.ACTION_DRAG_ENDED && !dragEvent.getResult()) {
+            for (int i = 0; i < obstacleCoord.size(); i++) {
+                if (Arrays.equals(obstacleCoord.get(i), new int[]{initialColumn - 1, initialRow - 1})) {
+                    obstacleCoord.remove(i);
+                    cells[initialColumn][20 - initialRow].setType("unexplored");
+                    ITEM_LIST.get(initialRow - 1)[initialColumn - 1] = "";
+                    imageBearings.get(initialRow - 1)[initialColumn - 1] = "";
+                    Home.printMessage("OBSTACLE," + (i+1) + "," + (initialColumn)*10 + "," + (initialRow)*10 + ",-1");
+                    break;
+                }
+            }
+        } else if (dragEvent.getAction() == DragEvent.ACTION_DROP) {
+            endColumn = (int) (dragEvent.getX() / cellSize);
+            endRow = this.convertRow((int) (dragEvent.getY() / cellSize));
+
+            if (endColumn >= 1 && endColumn <= 20 && endRow >= 1 && endRow <= 20) {
+                String tempID = ITEM_LIST.get(initialRow - 1)[initialColumn - 1];
+                String tempBearing = imageBearings.get(initialRow - 1)[initialColumn - 1];
+
+                if (ITEM_LIST.get(endRow - 1)[endColumn - 1].equals("") && imageBearings.get(endRow - 1)[endColumn - 1].equals("")) {
+                    ITEM_LIST.get(initialRow - 1)[initialColumn - 1] = "";
+                    imageBearings.get(initialRow - 1)[initialColumn - 1] = "";
+                    ITEM_LIST.get(endRow - 1)[endColumn - 1] = tempID;
+                    imageBearings.get(endRow - 1)[endColumn - 1] = tempBearing;
+
+                    for (int i = 0; i < obstacleCoord.size(); i++) {
+                        if (Arrays.equals(obstacleCoord.get(i), new int[]{initialColumn - 1, initialRow - 1})) {
+                            obstacleCoord.set(i, new int[]{endColumn - 1, endRow - 1});
+                            cells[endColumn][20 - endRow].setType(cells[initialColumn][20 - initialRow].type);
+                            cells[initialColumn][20 - initialRow].setType("unexplored");
+                            Home.printMessage("OBSTACLE," + (i+1) + "," + (endColumn-1)*10 + "," + (endRow-1)*10 + "," + tempBearing.toUpperCase());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        this.invalidate();
+        return true;
+    }
+
+    @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
             int column = (int) (event.getX() / cellSize);
             int row = this.convertRow((int) (event.getY() / cellSize));
             initialColumn = column; initialRow = row;
+
+            if (MappingFragment.dragStatus) {
+                if (column >= 1 && column <= 20 && row >= 1 && row <= 20) {
+                    if (!ITEM_LIST.get(row - 1)[column - 1].equals("") || !imageBearings.get(row - 1)[column - 1].equals("")) {
+                        View.DragShadowBuilder dragShadowBuilder = new View.DragShadowBuilder(this);
+                        this.startDrag(null, dragShadowBuilder, null, 0);
+                        return true;
+                    }
+                }
+            }
+
+            if (MappingFragment.changeObstacleStatus) {
+                if (column >= 1 && column <= 20 && row >= 1 && row <= 20) {
+                    if (!ITEM_LIST.get(row - 1)[column - 1].equals("") || !imageBearings.get(row - 1)[column - 1].equals("")) {
+                        final int tRow = row; final int tCol = column;
+                        AlertDialog.Builder mBuilder = new AlertDialog.Builder(this.getContext());
+                        View mView = ((Activity) this.getContext()).getLayoutInflater().inflate(R.layout.activity_dialog, null);
+                        mBuilder.setTitle("Change Existing Bearing");
+                        final Spinner mBearingSpinner = mView.findViewById(R.id.bearingSpinner2);
+                        ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(this.getContext(), R.array.imageBearing_array, android.R.layout.simple_spinner_item);
+                        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+                        mBearingSpinner.setAdapter(adapter);
+
+                        String currentBearing = imageBearings.get(row - 1)[column - 1];
+                        if (currentBearing.equals("North")) mBearingSpinner.setSelection(0);
+                        else if (currentBearing.equals("South")) mBearingSpinner.setSelection(1);
+                        else if (currentBearing.equals("East")) mBearingSpinner.setSelection(2);
+                        else if (currentBearing.equals("West")) mBearingSpinner.setSelection(3);
+
+                        mBuilder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialogInterface, int i) {
+                                String newBearing = mBearingSpinner.getSelectedItem().toString();
+                                imageBearings.get(tRow - 1)[tCol - 1] = newBearing;
+                                for (int m = 0; m < obstacleCoord.size(); m++) {
+                                    if (Arrays.equals(obstacleCoord.get(m), new int[]{tCol - 1, tRow - 1})) {
+                                        Home.printMessage("OBSTACLE," + (m+1) + "," + (tCol - 1)*10 + "," + (tRow - 1)*10 + "," + newBearing.toUpperCase());
+                                        break;
+                                    }
+                                }
+                                invalidate();
+                            }
+                        });
+                        mBuilder.setNegativeButton("Cancel", null);
+                        mBuilder.setView(mView);
+                        mBuilder.show();
+                        return true;
+                    }
+                }
+            }
 
             if (startCoordStatus) {
                 if (!canDrawRobot) canDrawRobot = true;
@@ -418,7 +509,6 @@ public class GridMap extends View {
             }
         } catch (Exception e) { robotDirection = backupDir; }
 
-        // Final safety check: ensuring the NEW 3x3 footprint doesn't contain an obstacle
         if (getValidPosition() && checkForObstacleCollision(curCoord, obstacleCoord)) {
             setValidPosition(false); 
             robotDirection = backupDir;
@@ -435,11 +525,9 @@ public class GridMap extends View {
     }
 
     public boolean checkForObstacleCollision(int[] coord, List<int[]> obstacles) {
-        // Robust 3x3 check: iterating from col-2 to col and row-2 to row (Android logic)
         for (int x = coord[0] - (ROBOT_SIZE-1); x <= coord[0]; x++) {
             for (int y = coord[1] - (ROBOT_SIZE-1); y <= coord[1]; y++) {
                 for (int[] obs : obstacles) {
-                    // Coordinates in obstacleCoord are 0-indexed displayed values (col-1, row-1)
                     if (obs[0] == (x - 1) && obs[1] == y) return true;
                 }
             }
