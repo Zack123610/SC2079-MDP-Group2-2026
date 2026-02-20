@@ -24,36 +24,22 @@ def _generate_turn_arc(
     is_forward: bool,
     world: World
 ) -> list[Vector] | None:
+
+    template = _get_turn_template(start.direction, is_left, is_forward)
+
+    x, y = start.x, start.y
     points: list[Vector] = []
 
-    # Step 1: move forward in current direction
-    dx, dy = {
-        Direction.NORTH: (0, 1),
-        Direction.EAST: (1, 0),
-        Direction.SOUTH: (0, -1),
-        Direction.WEST: (-1, 0),
-    }[start.direction]
+    for dx, dy, _ in template:
+        x += dx
+        y += dy
 
-    # Backward = invert movement
-    if not is_forward:
-        dx, dy = -dx, -dy
+        vec = Vector(end_dir if _ == 1 else start.direction, x, y)
 
-    mid = Vector(start.direction, start.x + dx, start.y + dy)
-
-    # Step 2: final position after turn (same cell, new direction)
-    end = Vector(end_dir, mid.x, mid.y)
-
-    # Validate
-    for p in (mid, end):
-        if not world.contains(p):
+        if not world.contains(vec):
             return None
 
-    # Remove redundant points
-    points.append(start)
-    if mid != start:
-        points.append(mid)
-    if end.direction != mid.direction:
-        points.append(end)
+        points.append(vec)
 
     return points
 
