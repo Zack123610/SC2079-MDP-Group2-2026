@@ -29,6 +29,7 @@ Context manager is supported:
 """
 
 import sys
+import threading
 import time
 from typing import Optional
 
@@ -282,27 +283,75 @@ class BluetoothInterface:
 
 
 # ---------------------------------------------------------------------------
-# Quick test when run directly
+# Bidirectional standalone test
 # ---------------------------------------------------------------------------
 
+def _receive_loop(bt: "BluetoothInterface", stop_event: threading.Event) -> None:
+    """Background thread: print every line received from Android."""
+    while not stop_event.is_set():
+        msg = bt.readline()
+        if msg:
+            # Print on its own line, then reprint the input prompt so the
+            # user's typing cursor stays clean.
+            print(f"\n[Android -> Pi] {msg}")
+            print("Send> ", end="", flush=True)
+        else:
+            time.sleep(0.05)
+
+
 if __name__ == "__main__":
-    print("Bluetooth Interface Test")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Bluetooth Interface – bidirectional test")
+    parser.add_argument(
+        "--pybluez", action="store_true",
+        help="Use legacy PyBluez RFCOMM server instead of /dev/rfcomm0",
+    )
+    parser.add_argument(
+        "--device", default=None,
+        help="Override RFCOMM serial device (default: /dev/rfcomm0)",
+    )
+    args = parser.parse_args()
+
+    print("Bluetooth Interface – Bidirectional Test")
     print("-" * 40)
-    print("Opening RFCOMM serial device...")
 
-    with BluetoothInterface() as bt:
-        if not bt.is_connected:
-            print("Failed to connect. Check rfcomm setup and try again.")
-            sys.exit(1)
+    bt = BluetoothInterface(use_pybluez_server=args.pybluez, device=args.device)
 
-        print("Connected. Listening for messages (Ctrl+C to quit)...")
-        try:
-            while True:
-                msg = bt.readline()
-                if msg:
-                    print(f"Received: {msg}")
-                    bt.send(f"ECHO:{msg}")
-                else:
-                    time.sleep(0.05)
-        except KeyboardInterrupt:
-            print("\nExiting.")
+    if not bt.start():
+        print("Failed to connect. Check rfcomm setup and try again.")
+        sys.exit(1)
+
+    print("Connected.")
+    print("  • Messages received from Android are printed automatically.")
+    print("  • Type a message and press Enter to send it to Android.")
+    print("  • Type 'quit' or press Ctrl+C to exit.")
+    print()
+
+    stop_event = threading.Event()
+    recv_thread = threading.Thread(
+        target=_receive_loop, args=(bt, stop_event), daemon=True
+    )
+    recv_thread.start()
+
+    try:
+        while True:
+            print("Send> ", end="", flush=True)
+            try:
+                line = input()
+            except EOFError:
+                break
+
+            if line.strip().lower() in ("quit", "exit", "q"):
+                break
+
+            if line.strip():
+                bt.send(line.strip())
+
+    except KeyboardInterrupt:
+        print()
+    finally:
+        stop_event.set()
+        recv_thread.join(timeout=1.0)
+        bt.close()
+        print("Exiting.")
