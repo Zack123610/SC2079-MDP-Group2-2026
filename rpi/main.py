@@ -50,12 +50,17 @@ DIR_LEFT     = 3
 DIR_RIGHT    = 4
 
 DIRECTION_MAP: dict[str, int] = {
-    "STOP":     DIR_STOP,
-    "FORWARD":  DIR_FORWARD,
-    "BACKWARD": DIR_BACKWARD,
-    "LEFT":     DIR_LEFT,
-    "RIGHT":    DIR_RIGHT,
+    "STOP":          DIR_STOP,
+    "FORWARD":       DIR_FORWARD,
+    "BACKWARD":      DIR_BACKWARD,
+    "LEFT":          DIR_LEFT,
+    "RIGHT":         DIR_RIGHT,
+    "FORWARD_LEFT":  DIR_LEFT,
+    "FORWARD_RIGHT": DIR_RIGHT,
 }
+
+# Directions that are turns: distance sent to STM is forced to 0
+TURN_DIRECTIONS = {"FORWARD_LEFT", "FORWARD_RIGHT", "LEFT", "RIGHT"}
 
 DIR_NAME: dict[int, str] = {v: k for k, v in DIRECTION_MAP.items()}
 
@@ -73,9 +78,10 @@ def build_command(direction: int, distance: int) -> str:
       - 3 chars: distance in cm, zero-padded (000–200)
 
     Examples:
-        MOVE,30,FORWARD  -> "1030"
-        TURN,LEFT        -> "3000"
-        STOP             -> "0000"
+        MOVE,30,FORWARD       -> "1030"
+        MOVE,10,FORWARD_LEFT  -> "3000"  (turn left, distance forced to 0)
+        MOVE,10,FORWARD_RIGHT -> "4000"  (turn right, distance forced to 0)
+        STOP                  -> "0000"
     """
     direction = max(0, min(direction, 4))
     distance  = max(0, min(distance, 200))
@@ -115,6 +121,9 @@ def parse_android_message(message: str) -> Optional[tuple[int, int]]:
         return None
 
     # MOVE,<distance>,<DIRECTION>
+    # Also handles turn commands from Android:
+    #   "MOVE,10,FORWARD_LEFT"  -> (DIR_LEFT,  0)  -> "3000"
+    #   "MOVE,10,FORWARD_RIGHT" -> (DIR_RIGHT, 0)  -> "4000"
     if msg.upper().startswith("MOVE,"):
         parts = [p.strip() for p in msg.split(",")]
         if len(parts) == 3:
@@ -123,27 +132,30 @@ def parse_android_message(message: str) -> Optional[tuple[int, int]]:
             except ValueError:
                 print(f"[PARSE] Invalid MOVE distance: {message}")
                 return None
-            dir_code = DIRECTION_MAP.get(parts[2].upper())
+            dir_str = parts[2].upper()
+            dir_code = DIRECTION_MAP.get(dir_str)
             if dir_code is None:
                 print(f"[PARSE] Unknown direction '{parts[2]}' in: {message}")
                 return None
-            print(f"[PARSE] MOVE {distance} cm {parts[2].upper()}")
+            if dir_str in TURN_DIRECTIONS:
+                distance = 0
+            print(f"[PARSE] MOVE {distance} cm {dir_str}")
             return (dir_code, distance)
         print(f"[PARSE] Malformed MOVE message: {message}")
         return None
 
     # TURN,<LEFT|RIGHT>
-    if msg.upper().startswith("TURN,"):
-        parts = [p.strip() for p in msg.split(",")]
-        if len(parts) == 2:
-            dir_code = DIRECTION_MAP.get(parts[1].upper())
-            if dir_code is None:
-                print(f"[PARSE] Unknown turn direction '{parts[1]}' in: {message}")
-                return None
-            print(f"[PARSE] TURN {parts[1].upper()}")
-            return (dir_code, 0)
-        print(f"[PARSE] Malformed TURN message: {message}")
-        return None
+    # if msg.upper().startswith("TURN,"):
+    #     parts = [p.strip() for p in msg.split(",")]
+    #     if len(parts) == 2:
+    #         dir_code = DIRECTION_MAP.get(parts[1].upper())
+    #         if dir_code is None:
+    #             print(f"[PARSE] Unknown turn direction '{parts[1]}' in: {message}")
+    #             return None
+    #         print(f"[PARSE] TURN {parts[1].upper()}")
+    #         return (dir_code, 0)
+    #     print(f"[PARSE] Malformed TURN message: {message}")
+    #     return None
 
     print(f"[PARSE] Unrecognised message: {message}")
     return None
