@@ -196,7 +196,7 @@ class PCInterface:
 
             cls_name = detection.get("cls_name", "?")
             conf = detection.get("conf", 0)
-            print(f"[PC] Detection #{self._recv_count}: {cls_name} ({conf:.2f})")
+            # print(f"[PC] Detection #{self._recv_count}: {cls_name} ({conf:.2f})")
 
     # ------------------------------------------------------------------
     # Context manager
