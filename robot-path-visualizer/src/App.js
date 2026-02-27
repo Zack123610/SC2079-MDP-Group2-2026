@@ -201,11 +201,7 @@ const GridVisualization = () => {
     
     try {
       const requestBody = {
-        robot: {
-          direction: "EAST",
-          south_west: { x: 0, y: 0 },
-          north_east: { x: 2, y: 2 }
-        },
+        robot: robot,
         obstacles: obstacles.map(obs => ({
           image_id: obs.id,
           direction: obs.direction,
@@ -251,6 +247,20 @@ const GridVisualization = () => {
         <div style={{ width: '300px' }}>
           <h3>Controls</h3>
           
+          <div style={{ marginBottom: '15px' }}>
+            <label>Robot Direction:</label>
+            <select 
+              value={robot.direction} 
+              onChange={(e) => setRobot(prev => ({ ...prev, direction: e.target.value }))}
+              style={{ padding: '5px', width: '100%', marginTop: '5px' }}
+            >
+              <option value="NORTH">North</option>
+              <option value="SOUTH">South</option>
+              <option value="EAST">East</option>
+              <option value="WEST">West</option>
+            </select>
+          </div>
+
           <div style={{ marginBottom: '15px' }}>
             <label>Obstacle Direction:</label>
             <select 

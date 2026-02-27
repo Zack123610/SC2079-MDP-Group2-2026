@@ -34,7 +34,13 @@ def _generate_turn_arc(
         x += dx
         y += dy
 
-        vec = Vector(end_dir if _ == 1 else start.direction, x, y)
+        # vec = Vector(end_dir if _ == 1 else start.direction, x, y)
+        if _ == 0:
+            direction = start.direction
+        else:
+            direction = end_dir
+
+        vec = Vector(direction, x, y)
 
         if not world.contains(vec):
             return None
