@@ -82,8 +82,11 @@ public class GridMap extends View {
     private boolean mapDrawn = false;
     private static final int CELL_LENGTH = 5; 
     
-    // Robot Configuration
+    // Robot Configuration: 3x3 footprint
     private static final int ROBOT_SIZE = 3;
+
+    public int movesRx = 0;
+    public int moves = 0;
 
     public ArrayList<String[]> ITEM_LIST = new ArrayList<>(Arrays.asList(
             new String[20], new String[20], new String[20], new String[20], new String[20],
@@ -211,15 +214,22 @@ public class GridMap extends View {
 
         int androidRowCoord = curCoord[1];
 
-        if (androidRowCoord < (ROBOT_SIZE - 1) || androidRowCoord > 19 || curCoord[0] > 20 || curCoord[0] < ROBOT_SIZE) {
+        // Bounds check for 3x3 robot (allowed row index 1 to 18)
+        if (androidRowCoord < 1 || androidRowCoord > 18 || curCoord[0] < 3 || curCoord[0] > 20) {
             return;
         }
 
-        for (int y = androidRowCoord - ROBOT_SIZE; y <= androidRowCoord; y++) {
-            canvas.drawLine(cells[curCoord[0] - (ROBOT_SIZE-1)][21 - y - 2].startX, cells[curCoord[0]][21 - y - 2].startY, cells[curCoord[0]][21 - y - 2].endX, cells[curCoord[0]][21 - y - 2].startY, robotColor);
+        int convRow = convertRow(androidRowCoord);
+        int startColIdx = curCoord[0] - 2;
+
+        // Draw visual 3x3 boundary lines safely
+        for (int i = 0; i <= ROBOT_SIZE; i++) {
+            float yPos = cells[startColIdx][convRow - 2].startY + i * cellSize;
+            canvas.drawLine(cells[startColIdx][convRow].startX, yPos, cells[curCoord[0]][convRow].endX, yPos, robotColor);
         }
-        for (int x = curCoord[0] - ROBOT_SIZE; x <= curCoord[0]; x++) {
-            canvas.drawLine(cells[x][21 - androidRowCoord - 1].endX, cells[x][21 - androidRowCoord - 1].endY, cells[x][21 - androidRowCoord - 1].endX, cells[x][21 - androidRowCoord - 2].startY, robotColor);
+        for (int i = 0; i <= ROBOT_SIZE; i++) {
+            float xPos = cells[startColIdx][convRow].startX + i * cellSize;
+            canvas.drawLine(xPos, cells[startColIdx][convRow - 2].startY, xPos, cells[curCoord[0]][convRow].endY, robotColor);
         }
 
         op.inMutable = true;
@@ -232,8 +242,9 @@ public class GridMap extends View {
         }
         bm = BitmapFactory.decodeResource(getResources(), resId, op);
         mapscalable = Bitmap.createScaledBitmap(bm, (int)(cellSize * ROBOT_SIZE), (int)(cellSize * ROBOT_SIZE), true);
-        xCoord = cells[curCoord[0] - (ROBOT_SIZE-1)][20 - androidRowCoord].startX;
-        yCoord = cells[curCoord[0]][20 - androidRowCoord - (ROBOT_SIZE-1)].startY;
+        
+        xCoord = cells[startColIdx][convRow].startX;
+        yCoord = cells[startColIdx][convRow - 2].startY;
         canvas.drawBitmap(mapscalable, xCoord, yCoord, null);
     }
 
@@ -263,24 +274,32 @@ public class GridMap extends View {
         if (this.getStartCoordStatus()) this.setCurCoord(col, row, direction);
 
         String dir = (direction.equals("up")) ? "NORTH" : (direction.equals("down")) ? "SOUTH" : (direction.equals("left")) ? "WEST" : "EAST";
-        if ((col - ROBOT_SIZE) >= 0 && (row - (ROBOT_SIZE-1)) >= 0) {
-            Home.printMessage("ROBOT" + "," + (col - ROBOT_SIZE) * 5 + "," + (row - (ROBOT_SIZE-1)) * 5 + "," + dir.toUpperCase());
+        if ((col - 3) >= 0 && (row - 1) >= 0) {
+            Home.printMessage("ROBOT" + "," + (col - 3) * 5 + "," + (row - 1) * 5 + "," + dir.toUpperCase());
         }
         this.invalidate();
     }
 
     public void setCurCoord(int col, int row, String direction) {
-        if (row < (ROBOT_SIZE-1) || row > 19 || col < ROBOT_SIZE || col > 20) {
+        // Bounds check updated: allowed row starts from 1 (visual y=0)
+        if (row < 1 || row > 18 || col < 3 || col > 20) {
             return;
         }
+        
+        int[] temp = {col, row};
+        if (checkForObstacleCollision(temp, obstacleCoord)) {
+            showLog("Cannot move: collision detected");
+            return;
+        }
+
         curCoord[0] = col;
         curCoord[1] = row;
         this.setRobotDirection(direction);
         this.updateRobotAxis(col, row, direction);
         int convertedRow = this.convertRow(row);
         
-        for (int x = col - (ROBOT_SIZE-1); x <= col; x++)
-            for (int y = convertedRow - (ROBOT_SIZE-1); y <= convertedRow; y++)
+        for (int x = col - 2; x <= col; x++)
+            for (int y = convertedRow - 2; y <= convertedRow; y++)
                 cells[x][y].setType("robot");
     }
 
@@ -296,8 +315,8 @@ public class GridMap extends View {
         int convertedRow = this.convertRow(oldRow);
         if (convertedRow < 0) return;
         
-        for (int x = oldCol - (ROBOT_SIZE-1); x <= oldCol; x++)
-            for (int y = convertedRow - (ROBOT_SIZE-1); y <= convertedRow; y++)
+        for (int x = oldCol - 2; x <= oldCol; x++)
+            for (int y = convertedRow - 2; y <= convertedRow; y++)
                 cells[x][y].setType("explored");
     }
 
@@ -521,14 +540,18 @@ public class GridMap extends View {
     }
 
     private boolean isValid(int col, int row) {
-        return col >= ROBOT_SIZE && col <= 20 && row >= (ROBOT_SIZE-1) && row <= 19;
+        // Correct bounds for 3x3 robot allowed at visual y=0 (row=1)
+        return col >= 3 && col <= 20 && row >= 1 && row <= 18;
     }
 
     public boolean checkForObstacleCollision(int[] coord, List<int[]> obstacles) {
-        for (int x = coord[0] - (ROBOT_SIZE-1); x <= coord[0]; x++) {
-            for (int y = coord[1] - (ROBOT_SIZE-1); y <= coord[1]; y++) {
+        // 3x3 footprint check in visual coordinates
+        for (int vCol = coord[0] - 3; vCol <= coord[0] - 1; vCol++) {
+            for (int vRow = coord[1] - 1; vRow <= coord[1] + 1; vRow++) {
                 for (int[] obs : obstacles) {
-                    if (obs[0] == (x - 1) && obs[1] == y) return true;
+                    if (obs[0] == vCol && obs[1] == vRow) {
+                        return true;
+                    }
                 }
             }
         }
