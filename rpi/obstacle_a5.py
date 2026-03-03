@@ -50,7 +50,7 @@ WINDOW_SIZE  = 10       # rolling detection window
 CONFIDENCE_THRESHOLD = 8  # need 8/10 agreeing detections to be "certain"
 VALID_CLS_RANGE = range(0, 31)  # cls_id 0–30 are valid images
 
-STM_RECV_TIMEOUT = 60.0  # seconds to wait for STM response
+STM_RECV_TIMEOUT = 30.0  # seconds to wait for STM response
 DETECTION_WAIT   = 3.0   # seconds to wait for detections on each face
 
 
@@ -132,19 +132,27 @@ def _detection_collector(
 # ---------------------------------------------------------------------------
 
 def send_and_wait(stm: STM32Interface, cmd: str) -> Optional[str]:
-    """Send *cmd* to STM32 and block until we get a response."""
+    """
+    Send *cmd* to STM32 and poll for a response.
+
+    Polls with a short interval (0.1 s) so we react immediately when
+    data arrives, rather than blocking for the full timeout.
+    """
     print(f"\n[A5] Sending '{cmd}' to STM32...")
     if not stm.send(cmd, add_newline=False):
         print("[A5] Failed to send command to STM32!")
         return None
 
     print(f"[A5] Waiting for STM32 response (timeout={STM_RECV_TIMEOUT}s)...")
-    response = stm.receive(timeout=STM_RECV_TIMEOUT)
-    if response:
-        print(f"[A5] STM32 responded: '{response}'")
-    else:
-        print("[A5] No response from STM32 (timeout)")
-    return response
+    start = time.time()
+    while time.time() - start < STM_RECV_TIMEOUT:
+        response = stm.receive(timeout=0.1)
+        if response:
+            elapsed = time.time() - start
+            print(f"[A5] STM32 responded: '{response}' ({elapsed:.1f}s)")
+            return response
+    print("[A5] No response from STM32 (timeout)")
+    return None
 
 
 def print_window(tracker: DetectionTracker) -> None:
@@ -206,7 +214,7 @@ def run(stm: STM32Interface, tracker: DetectionTracker) -> None:
             print("[A5] STM32 did not respond. Try again.")
             continue
 
-        if response not in ("DONE", "OBST"):
+        if response not in ("0000","DONE", "OBST"):
             print(f"[A5] Unexpected STM32 response: '{response}'. Continuing anyway.")
 
         # --- Phase 2: evaluate faces, rotate if needed --------------------
