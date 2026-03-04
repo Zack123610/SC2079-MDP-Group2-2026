@@ -263,6 +263,25 @@ def wait_for_stm(stm: STM32Interface) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
+def _build_stm_payload(stm_commands: list[str]) -> str:
+    """
+    Frame the concatenated STM commands for transmission.
+
+    Format:  ``<cmd1cmd2...cmdN>CC``
+
+    where CC is a checksum: ``(sum of all digit chars in the commands) % 100``.
+
+    Example:
+        commands = ["6030", "2020", "6033"]
+        body     = "603020206033"
+        checksum = (6+0+3+0+2+0+2+0+6+0+3+3) % 100 = 25
+        payload  = "<603020206033>25"
+    """
+    body = "".join(stm_commands)
+    checksum = sum(int(ch) for ch in body if ch.isdigit()) % 100
+    return f"<{body}>{checksum}"
+
+
 def execute_all(
     stm: STM32Interface,
     bt: BluetoothInterface,
@@ -273,15 +292,15 @@ def execute_all(
     run_start: float,
 ) -> bool:
     """
-    Send the full concatenated STM command string, then process
+    Send the full framed STM command string, then process
     responses one-by-one.
 
     Returns True if all commands completed, False on timeout / error.
     """
     # --- Batch send ---
-    stm_payload = "".join(stm_commands)
+    stm_payload = _build_stm_payload(stm_commands)
     print(f"[TASK1] → STM32 (batch): '{stm_payload}' "
-          f"({len(stm_commands)} commands, {len(stm_payload)} chars)")
+          f"({len(stm_commands)} commands)")
     if not stm.send(stm_payload, add_newline=False):
         print("[TASK1] Failed to send batch to STM32")
         return False
@@ -338,6 +357,46 @@ def execute_all(
 
     print(f"[TASK1] All {len(stm_commands)} commands executed")
     return True
+
+
+# ---------------------------------------------------------------------------
+# Manual STM command mode
+# ---------------------------------------------------------------------------
+
+
+def _manual_stm_mode(stm: STM32Interface) -> None:
+    """
+    Interactive prompt that lets the operator send raw commands to STM32.
+
+    Type a command (e.g. ``1030``, ``3000``) and press Enter.
+    Type ``quit`` or ``q`` to exit back to the Android listener loop.
+    """
+    print("\n" + "-" * 50)
+    print("  Manual STM command mode")
+    print("  Type a command to send to STM32 (e.g. 1030)")
+    print("  Type 'quit' or 'q' to return to Android listener")
+    print("-" * 50)
+
+    while True:
+        try:
+            cmd = input("[STM manual] > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+
+        if cmd.lower() in ("quit", "exit", "q", ""):
+            break
+
+        print(f"[STM manual] → STM32: '{cmd}'")
+        stm.send(cmd, add_newline=False)
+
+        response = wait_for_stm(stm)
+        if response:
+            print(f"[STM manual] ← STM32: '{response}'")
+        else:
+            print("[STM manual] No response (timeout)")
+
+    print("[STM manual] Exiting manual mode\n")
 
 
 # ---------------------------------------------------------------------------
@@ -450,6 +509,9 @@ def run(
                 "south_west": {"x": 0, "y": 0},
                 "north_east": {"x": 1, "y": 1},
             }
+
+            # Manual STM command mode until Android sends new obstacles
+            _manual_stm_mode(stm)
             print("[TASK1] Waiting for next set of obstacles …\n")
             continue
 
@@ -465,7 +527,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Task 1 – Obstacle Navigation")
     parser.add_argument("--pc-host", required=True,
                         help="PC IP address")
-    parser.add_argument("--algo-port", type=int, default=5001,
+    parser.add_argument("--algo-port", type=int, default=15001,
                         help="Algo service port on PC")
     parser.add_argument("--pc-port", type=int, default=5556,
                         help="PC detection ZMQ PUB port")
