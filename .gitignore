@@ -7,6 +7,7 @@ runs/*
 
 # Algo Service
 algo_service/*
+**/__pycache__/
 
 # RPi
 rpi/task1-one-by-one.py
