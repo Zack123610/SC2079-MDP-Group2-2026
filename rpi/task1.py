@@ -364,39 +364,39 @@ def execute_all(
 # ---------------------------------------------------------------------------
 
 
-def _manual_stm_mode(stm: STM32Interface) -> None:
-    """
-    Interactive prompt that lets the operator send raw commands to STM32.
+# def _manual_stm_mode(stm: STM32Interface) -> None:
+#     """
+#     Interactive prompt that lets the operator send raw commands to STM32.
 
-    Type a command (e.g. ``1030``, ``3000``) and press Enter.
-    Type ``quit`` or ``q`` to exit back to the Android listener loop.
-    """
-    print("\n" + "-" * 50)
-    print("  Manual STM command mode")
-    print("  Type a command to send to STM32 (e.g. 1030)")
-    print("  Type 'quit' or 'q' to return to Android listener")
-    print("-" * 50)
+#     Type a command (e.g. ``1030``, ``3000``) and press Enter.
+#     Type ``quit`` or ``q`` to exit back to the Android listener loop.
+#     """
+#     print("\n" + "-" * 50)
+#     print("  Manual STM command mode")
+#     print("  Type a command to send to STM32 (e.g. 1030)")
+#     print("  Type 'quit' or 'q' to return to Android listener")
+#     print("-" * 50)
 
-    while True:
-        try:
-            cmd = input("[STM manual] > ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
+#     while True:
+#         try:
+#             cmd = input("[STM manual] > ").strip()
+#         except (EOFError, KeyboardInterrupt):
+#             print()
+#             break
 
-        if cmd.lower() in ("quit", "exit", "q", ""):
-            break
+#         if cmd.lower() in ("quit", "exit", "q", ""):
+#             break
 
-        print(f"[STM manual] → STM32: '{cmd}'")
-        stm.send(cmd, add_newline=False)
+#         print(f"[STM manual] → STM32: '{cmd}'")
+#         stm.send(cmd, add_newline=False)
 
-        response = wait_for_stm(stm)
-        if response:
-            print(f"[STM manual] ← STM32: '{response}'")
-        else:
-            print("[STM manual] No response (timeout)")
+#         response = wait_for_stm(stm)
+#         if response:
+#             print(f"[STM manual] ← STM32: '{response}'")
+#         else:
+#             print("[STM manual] No response (timeout)")
 
-    print("[STM manual] Exiting manual mode\n")
+#     print("[STM manual] Exiting manual mode\n")
 
 
 # ---------------------------------------------------------------------------
@@ -511,7 +511,7 @@ def run(
             }
 
             # Manual STM command mode until Android sends new obstacles
-            _manual_stm_mode(stm)
+            # _manual_stm_mode(stm)
             print("[TASK1] Waiting for next set of obstacles …\n")
             continue
 
