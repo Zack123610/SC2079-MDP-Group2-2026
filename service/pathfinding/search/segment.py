@@ -79,6 +79,7 @@ def __trace(
     while current is not None:
         move = moves.get(current)
         
+        '''
         if isinstance(move, Turn):
             # For turns, only add the final position
             path.append((current, move))
@@ -89,7 +90,8 @@ def __trace(
                 path.append((vector, None))  # Intermediate points
             path.append((current, move))  # Final point
         else:
-            path.append((current, move))
+        '''
+        path.append((current, move))
         current = source.get(current)
 
     path.reverse()

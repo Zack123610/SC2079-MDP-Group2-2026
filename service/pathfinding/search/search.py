@@ -7,7 +7,6 @@ from pathfinding.search.segment import segment
 from pathfinding.world.primitives import Vector
 from pathfinding.world.world import World, Obstacle
 
-"""
 def search(world: World, objectives: dict[Obstacle, tuple[Vector, set[Vector]]]) -> list[Segment]:
     segments = []
     current = world.robot.vector
@@ -63,7 +62,7 @@ def search(world: World, objectives: dict[Obstacle, tuple[Vector, set[Vector]]])
         objectives.pop(obstacle, None)
     
     return segments
-
+"""
 def find_optimal_order(world: World, objectives: dict[Obstacle, tuple[Vector, set[Vector]]]) -> list[Obstacle]:
     # Find optimal order to visit all obstacles using greedy TSP approach.
     

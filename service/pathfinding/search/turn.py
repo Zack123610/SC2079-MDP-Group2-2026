@@ -2,7 +2,351 @@ from pathfinding.search.instructions import TurnInstruction
 from pathfinding.world.primitives import Direction, Vector
 from pathfinding.world.world import World
 
+def turn(world: World, start: Vector, instruction: TurnInstruction) -> list[Vector] | None:
+    """
+    Performs a turn.
 
+    :param world: The world.
+    :param start: The initial vector.
+    :param instruction: The turn instruction.
+    :return: The path of the turn if it is legal, otherwise returns None.
+    """
+
+    # The turning radius (in grid cells). The turning radius is assumed to be 25cm.
+    turning_radius = instruction.radius(world.cell_size)
+    offset = 3 // world.cell_size
+
+    curve: list[Vector] | None
+    match (start.direction, instruction):
+        # y facing north
+        case (Direction.NORTH, TurnInstruction.FORWARD_LEFT):
+            x = start.x
+            y = start.y - world.robot.south_length + offset
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.WEST,
+                    x - turning_radius - world.robot.east_length + offset,
+                    y + turning_radius,
+                ),
+                x - turning_radius,
+                y,
+                1,
+            )
+
+        case (Direction.NORTH, TurnInstruction.FORWARD_RIGHT):
+            x = start.x
+            y = start.y - world.robot.south_length + offset
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.EAST,
+                    x + turning_radius + world.robot.west_length - offset,
+                    y + turning_radius,
+                ),
+                x + turning_radius,
+                y,
+                2,
+            )
+
+        case (Direction.NORTH, TurnInstruction.BACKWARD_LEFT):
+            x = start.x
+            y = start.y - world.robot.south_length + offset
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.EAST,
+                    x - turning_radius + world.robot.west_length - offset,
+                    y - turning_radius,
+                ),
+                x - turning_radius,
+                y,
+                4,
+            )
+
+        case (Direction.NORTH, TurnInstruction.BACKWARD_RIGHT):
+            x = start.x
+            y = start.y - world.robot.south_length + offset
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.WEST,
+                    x + turning_radius - world.robot.west_length + offset,
+                    y - turning_radius,
+                ),
+                x + turning_radius,
+                y,
+                3,
+            )
+
+        # y facing east
+        case (Direction.EAST, TurnInstruction.FORWARD_LEFT):
+            x = start.x - world.robot.west_length + offset
+            y = start.y
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.NORTH,
+                    x + turning_radius,
+                    y + turning_radius + world.robot.south_length - offset,
+                ),
+                x,
+                y + turning_radius,
+                4,
+            )
+
+        case (Direction.EAST, TurnInstruction.FORWARD_RIGHT):
+            x = start.x - world.robot.west_length + offset
+            y = start.y
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.SOUTH,
+                    x + turning_radius,
+                    y - turning_radius - world.robot.north_length + offset,
+                ),
+                x,
+                y - turning_radius,
+                1,
+            )
+
+        case (Direction.EAST, TurnInstruction.BACKWARD_LEFT):
+            x = start.x - world.robot.west_length + offset
+            y = start.y
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.SOUTH,
+                    x - turning_radius,
+                    y + turning_radius - world.robot.north_length + offset,
+                ),
+                x,
+                y + turning_radius,
+                3,
+            )
+
+        case (Direction.EAST, TurnInstruction.BACKWARD_RIGHT):
+            x = start.x - world.robot.west_length + offset
+            y = start.y
+            return __curve(
+                world,
+                turning_radius,
+                Vector(Direction.NORTH, x - turning_radius, y - turning_radius),
+                x,
+                y - turning_radius + world.robot.south_length - offset,
+                2,
+            )
+
+        # y facing south
+        case (Direction.SOUTH, TurnInstruction.FORWARD_LEFT):
+            x = start.x
+            y = start.y + world.robot.north_length - offset
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.EAST,
+                    x + turning_radius + world.robot.west_length - offset,
+                    y - turning_radius,
+                ),
+                x + turning_radius,
+                y,
+                3,
+            )
+
+        case (Direction.SOUTH, TurnInstruction.FORWARD_RIGHT):
+            x = start.x
+            y = start.y + world.robot.north_length - offset
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.WEST,
+                    x - turning_radius - world.robot.east_length + offset,
+                    y - turning_radius,
+                ),
+                x - turning_radius,
+                y,
+                4,
+            )
+
+        case (Direction.SOUTH, TurnInstruction.BACKWARD_LEFT):
+            x = start.x
+            y = start.y + world.robot.north_length - offset
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.WEST,
+                    x + turning_radius - world.robot.east_length + offset,
+                    y + turning_radius,
+                ),
+                x + turning_radius,
+                y,
+                2,
+            )
+
+        case (Direction.SOUTH, TurnInstruction.BACKWARD_RIGHT):
+            x = start.x
+            y = start.y + world.robot.north_length - offset
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.EAST,
+                    x - turning_radius + world.robot.west_length - offset,
+                    y + turning_radius,
+                ),
+                x - turning_radius,
+                y,
+                1,
+            )
+
+        # y facing west
+        case (Direction.WEST, TurnInstruction.FORWARD_LEFT):
+            x = start.x + world.robot.east_length - offset
+            y = start.y
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.SOUTH,
+                    x - turning_radius,
+                    y - turning_radius - world.robot.north_length + offset,
+                ),
+                x,
+                y - turning_radius,
+                2,
+            )
+
+        case (Direction.WEST, TurnInstruction.FORWARD_RIGHT):
+            x = start.x + world.robot.east_length - offset
+            y = start.y
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.NORTH,
+                    x - turning_radius,
+                    y + turning_radius + world.robot.south_length - offset,
+                ),
+                x,
+                y + turning_radius,
+                3,
+            )
+
+        case (Direction.WEST, TurnInstruction.BACKWARD_LEFT):
+            x = start.x + world.robot.east_length - offset
+            y = start.y
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.NORTH,
+                    x + turning_radius,
+                    y - turning_radius + world.robot.south_length - offset,
+                ),
+                x,
+                y - turning_radius,
+                1,
+            )
+
+        case (Direction.WEST, TurnInstruction.BACKWARD_RIGHT):
+            x = start.x + world.robot.east_length - offset
+            y = start.y
+            return __curve(
+                world,
+                turning_radius,
+                Vector(
+                    Direction.SOUTH,
+                    x + turning_radius,
+                    y + turning_radius - world.robot.north_length + offset,
+                ),
+                x,
+                y + turning_radius,
+                4,
+            )
+
+
+def __curve(
+    world: World,
+    turning_radius: int,
+    end: Vector,
+    centre_x: int,
+    centre_y: int,
+    quadrant: int,
+) -> list[Vector] | None:
+    """
+    Uses a modified Midpoint circle algorithm to determine a continuous, 
+    chronological path for a robot turn.
+    """
+    assert 1 <= quadrant <= 4
+
+    x = turning_radius
+    y = 0
+    err = 0
+
+    # We use two lists to collect points from the two ends of the 90-degree arc
+    # path_start builds from the axis towards the 45-degree diagonal
+    # path_end builds from the other axis towards the 45-degree diagonal
+    path_start = []
+    path_end = []
+
+    # Map the circle coordinates to the specific world quadrant
+    match quadrant:
+        case 1: # North to East (or East to North)
+            a_map = lambda _x, _y: Vector(end.direction, centre_x + _x, centre_y + _y)
+            b_map = lambda _x, _y: Vector(end.direction, centre_x + _y, centre_y + _x)
+        case 2: # North to West
+            a_map = lambda _x, _y: Vector(end.direction, centre_x - _y, centre_y + _x)
+            b_map = lambda _x, _y: Vector(end.direction, centre_x - _x, centre_y + _y)
+        case 3: # South to West
+            a_map = lambda _x, _y: Vector(end.direction, centre_x - _x, centre_y - _y)
+            b_map = lambda _x, _y: Vector(end.direction, centre_x - _y, centre_y - _x)
+        case 4: # South to East
+            a_map = lambda _x, _y: Vector(end.direction, centre_x + _y, centre_y - _x)
+            b_map = lambda _x, _y: Vector(end.direction, centre_x + _x, centre_y - _y)
+
+    while x >= y:
+        a = a_map(x, y)
+        b = b_map(x, y)
+
+        # Immediate collision check: if any part of the arc is blocked, the turn is invalid
+        if not world.contains(a) or not world.contains(b):
+            return None
+
+        path_start.append(a)
+        path_end.append(b)
+
+        y += 1
+        err += 1 + 2 * y
+        if 2 * (err - x) + 1 > 0:
+            x -= 1
+            err += 1 - 2 * x
+
+    # IMPORTANT: The algorithm produces path_end in reverse order relative to the start.
+    # We reverse path_end so that the points flow logically from Start -> Middle -> End.
+    path_end.reverse()
+    
+    # Combine the two halves of the arc
+    full_path = path_start + path_end
+    
+    # Ensure the final target vector is included and valid
+    if world.contains(end):
+        full_path.append(end)
+    else:
+        return None
+
+    return full_path
+    
+'''
 def turn(world: World, current: Vector, move: TurnInstruction) -> list[Vector] | None:
     """
     Generate turning arc that starts from current position.
@@ -28,27 +372,25 @@ def _generate_turn_arc(
     template = _get_turn_template(start.direction, is_left, is_forward)
 
     x, y = start.x, start.y
-    points: list[Vector] = []
+    all_points: list[Vector] = []
 
-    for dx, dy, _ in template:
+    for dx, dy, progress in template:
         x += dx
         y += dy
 
-        # vec = Vector(end_dir if _ == 1 else start.direction, x, y)
-        if _ == 0:
-            direction = start.direction
-        else:
-            direction = end_dir
-
+        # Logic Fix: Only change direction at the end of the template (progress == 1)
+        direction = start.direction if progress < 1 else end_dir
         vec = Vector(direction, x, y)
 
         if not world.contains(vec):
-            return None
+            return None # Collision check fails
+            
+        all_points.append(vec)
 
-        points.append(vec)
-
-    return points
-
+    # To avoid the "1 by 1" JSON output, the segment.py trace logic 
+    # should only pick the LAST point of this arc.
+    return all_points
+    
 # Helper functions
 def _get_new_direction(current_dir: Direction, is_left: bool, is_forward: bool) -> Direction:
     """Calculate final direction after turn."""
@@ -92,49 +434,97 @@ def _get_new_direction(current_dir: Direction, is_left: bool, is_forward: bool) 
                 Direction.WEST: Direction.SOUTH    # Was NORTH, now SOUTH
             }[current_dir]
   
+'''
+'''
 def _get_turn_template(direction: Direction, is_left: bool, is_forward: bool):
-    """Pre-defined turn patterns for different directions."""
-    
-    # Template: list of (dx, dy, direction_progress)
-    # direction_progress: 0=start dir, 1=end dir, 0.5=halfway
+    """
+    Returns a list of (dx, dy, progress) tuples.
+    If this function returns (0, 0), the robot will turn in place (1x1).
+    """
+    # 1. Define movement offsets based on direction
+    if direction == Direction.NORTH:
+        if is_forward:
+            # Move North 3 cells, then move West/East while finishing turn
+            return [(0, 1, 0), (0, 1, 0), (0, 1, 0), (-1, 1, 0.5), (-1, 0, 1)] if is_left else \
+                   [(0, 1, 0), (0, 1, 0), (0, 1, 0), (1, 1, 0.5), (1, 0, 1)]
+        else: # BACKWARD
+            # Move South 3 cells, then swing tail West/East
+            return [(0, -1, 0), (0, -1, 0), (0, -1, 0), (1, -1, 0.5), (1, 0, 1)] if is_left else \
+                   [(0, -1, 0), (0, -1, 0), (0, -1, 0), (-1, -1, 0.5), (-1, 0, 1)]
+
+    elif direction == Direction.EAST:
+        if is_forward:
+            return [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 1, 0.5), (0, 1, 1)] if is_left else \
+                   [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, -1, 0.5), (0, -1, 1)]
+        else: # BACKWARD
+            return [(-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, -1, 0.5), (0, -1, 1)] if is_left else \
+                   [(-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, 1, 0.5), (0, 1, 1)]
+
+    elif direction == Direction.SOUTH:
+        if is_forward:
+            return [(0, -1, 0), (0, -1, 0), (0, -1, 0), (1, -1, 0.5), (1, 0, 1)] if is_left else \
+                   [(0, -1, 0), (0, -1, 0), (0, -1, 0), (-1, -1, 0.5), (-1, 0, 1)]
+        else: # BACKWARD
+            return [(0, 1, 0), (0, 1, 0), (0, 1, 0), (-1, 1, 0.5), (-1, 0, 1)] if is_left else \
+                   [(0, 1, 0), (0, 1, 0), (0, 1, 0), (1, 1, 0.5), (1, 0, 1)]
+
+    elif direction == Direction.WEST:
+        if is_forward:
+            return [(-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, -1, 0.5), (0, -1, 1)] if is_left else \
+                   [(-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, 1, 0.5), (0, 1, 1)]
+        else: # BACKWARD
+            return [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 1, 0.5), (0, 1, 1)] if is_left else \
+                   [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, -1, 0.5), (0, -1, 1)]
+
+    # NEVER return a default (0,0) template here. 
+    # If the code reaches here, it should crash so you know which direction is missing.
+    raise ValueError(f"No turn template defined for {direction} forward={is_forward}")
+'''
+'''
+def _get_turn_template(direction: Direction, is_left: bool, is_forward: bool):
+    """
+    Returns (dx, dy, progress). 
+    Displacements are increased to force a large arc and prevent 1x1 transitions.
+    """
+    # Define a 'Large Arc' constant - total displacement in both axes
+    # Based on your 40cm radius / 5cm cell = 8 cells, 
+    # we want the sum of dx/dy to be around 4-6 to feel like an arc.
     
     if direction == Direction.NORTH:
-        if is_forward and is_left:  # North → West (forward-left)
-            return [
-                (0, 1, 0),    # Move forward
-                (-1, 1, 0.5), # Diag left-forward
-                (-1, 0, 1),   # Move left
-                (-1, 0, 1)    # Final position
-            ]
-        elif is_forward and not is_left:  # North → East (forward-right)
-            return [
-                (0, 1, 0),
-                (1, 1, 0.5),
-                (1, 0, 1),
-                (1, 0, 1)
-            ]
+        if is_forward:
+            # North -> West: Needs to move +y and -x
+            return [(0, 1, 0), (0, 1, 0), (0, 1, 0), (-1, 1, 0.5), (-1, 1, 0.5), (-1, 0, 1), (-1, 0, 1)] if is_left else \
+                   [(0, 1, 0), (0, 1, 0), (0, 1, 0), (1, 1, 0.5), (1, 1, 0.5), (1, 0, 1), (1, 0, 1)]
+        else: # BACKWARD
+            # North -> East/West: Needs to move -y and +/- x
+            return [(0, -1, 0), (0, -1, 0), (0, -1, 0), (1, -1, 0.5), (1, -1, 0.5), (1, 0, 1), (1, 0, 1)] if is_left else \
+                   [(0, -1, 0), (0, -1, 0), (0, -1, 0), (-1, -1, 0.5), (-1, -1, 0.5), (-1, 0, 1), (-1, 0, 1)]
+
     elif direction == Direction.EAST:
-        if is_forward and is_left:  # East → North
-            return [
-                (1, 0, 0),
-                (1, 1, 0.5),
-                (0, 1, 1),
-                (0, 1, 1)
-            ]
-        elif is_forward and not is_left:  # East → South
-            return [
-                (1, 0, 0),
-                (1, -1, 0.5),
-                (0, -1, 1),
-                (0, -1, 1)
-            ]
-    # Add templates for other directions...
-    
-    # Default: simple 2-point turn (not realistic but works)
-    return [
-        (0, 0, 0),  # Start
-        (0, 0, 1)   # End (turned in place)
-    ]
+        if is_forward:
+            return [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 1, 0.5), (1, 1, 0.5), (0, 1, 1), (0, 1, 1)] if is_left else \
+                   [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, -1, 0.5), (1, -1, 0.5), (0, -1, 1), (0, -1, 1)]
+        else: # BACKWARD
+            return [(-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, -1, 0.5), (-1, -1, 0.5), (0, -1, 1), (0, -1, 1)] if is_left else \
+                   [(-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, 1, 0.5), (-1, 1, 0.5), (0, 1, 1), (0, 1, 1)]
+
+    elif direction == Direction.SOUTH:
+        if is_forward:
+            return [(0, -1, 0), (0, -1, 0), (0, -1, 0), (1, -1, 0.5), (1, -1, 0.5), (1, 0, 1), (1, 0, 1)] if is_left else \
+                   [(0, -1, 0), (0, -1, 0), (0, -1, 0), (-1, -1, 0.5), (-1, -1, 0.5), (-1, 0, 1), (-1, 0, 1)]
+        else: # BACKWARD
+            return [(0, 1, 0), (0, 1, 0), (0, 1, 0), (-1, 1, 0.5), (-1, 1, 0.5), (-1, 0, 1), (-1, 0, 1)] if is_left else \
+                   [(0, 1, 0), (0, 1, 0), (0, 1, 0), (1, 1, 0.5), (1, 1, 0.5), (1, 0, 1), (1, 0, 1)]
+
+    elif direction == Direction.WEST:
+        if is_forward:
+            return [(-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, -1, 0.5), (-1, -1, 0.5), (0, -1, 1), (0, -1, 1)] if is_left else \
+                   [(-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, 1, 0.5), (-1, 1, 0.5), (0, 1, 1), (0, 1, 1)]
+        else: # BACKWARD
+            return [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 1, 0.5), (1, 1, 0.5), (0, 1, 1), (0, 1, 1)] if is_left else \
+                   [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, -1, 0.5), (1, -1, 0.5), (0, -1, 1), (0, -1, 1)]
+
+    raise ValueError(f"No turn template defined for {direction} forward={is_forward}")
 
 def __curve(
     world: World,
@@ -144,18 +534,6 @@ def __curve(
     centre_y,
     quadrant: int,
 ) -> list[Vector] | None:
-    """
-    Uses a modified Midpoint circle algorithm to determine the curved path of a robot when turning.
-
-    :param centre_x: The centre of the turning radius's x value.
-    :param centre_y: The centre of the turning radius's y value.
-    :param quadrant: The quadrant of the circle.
-        Quadrants:
-              2 | 1
-            ----+----
-              3 | 4
-    :return: the vectors in the curve, may contain duplicates
-    """
     assert 1 <= quadrant <= 4
 
     x = turning_radius
@@ -203,3 +581,4 @@ def __curve(
 
     path.append(end)
     return path
+'''
