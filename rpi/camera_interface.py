@@ -187,7 +187,7 @@ class CameraInterface:
                     elapsed = time.time() - start_time
                     fps = self._frame_count / elapsed if elapsed > 0 else 0
                     size_kb = len(encoded.tobytes()) / 1024
-                    print(f"[CAM] {fps:.1f} FPS, frame ~{size_kb:.1f} KB")
+                    #print(f"[CAM] {fps:.1f} FPS, frame ~{size_kb:.1f} KB")
 
             except Exception as e:
                 if self._running:
