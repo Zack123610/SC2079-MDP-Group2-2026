@@ -1,17 +1,20 @@
 """
 Task 1 – Obstacle Navigation and Image Recognition
 
-Full autonomous flow:
+Execution model (experimental – batch send):
   1. Android sends ROBOT position, OBSTACLE list, then BEGIN.
   2. RPi parses everything and POSTs to the algo service on PC:5001.
-  3. For each segment the algo returns, RPi walks the instructions:
-       a. Translate each instruction into BOTH an STM command and an
-          Android UI command, send them, and wait for STM to acknowledge
-          ("0000" or "DONE") before moving on.
-       b. On CAPTURE_IMAGE, run DetectionTracker majority-vote window
-          and send  TARGET,<ObstacleNumber>,<TargetID>  to Android.
-  4. After all segments (or a 6-minute timeout), send "0000" (stop) to
-     STM and loop back, waiting for the next batch of obstacles.
+  3. RPi flattens ALL instructions from ALL segments into one list,
+     translating each into a 4-char STM command (CAPTURE_IMAGE → "5000")
+     and a parallel Android UI command.
+  4. The full STM command string is concatenated and sent to STM in one
+     shot.  STM slices every 4 bytes and executes sequentially.
+  5. RPi enters a response loop:
+       - "DONE" → send the indexed Android command to update the UI.
+       - "HALT" (from "5000") → run DetectionTracker, send TARGET to
+         Android, then send "RESM" to STM to resume.
+  6. After all instructions (or 6-minute timeout), send "0000" to STM
+     and loop back for the next batch.
 
 Android → RPi message examples:
     ROBOT,0,0,NORTH
@@ -137,7 +140,8 @@ def instruction_to_commands(
     """
     Convert one algo instruction into ``(stm_cmd, android_cmd)``.
 
-    Returns ``(None, None)`` for ``CAPTURE_IMAGE`` (handled separately).
+    CAPTURE_IMAGE → ``("5000", None)`` — the Android message is
+    determined at runtime after image recognition.
     """
     if isinstance(instruction, dict):
         move   = instruction.get("move", "").upper()
@@ -153,7 +157,7 @@ def instruction_to_commands(
     if isinstance(instruction, str):
         upper = instruction.upper()
         if upper == "CAPTURE_IMAGE":
-            return (None, None)
+            return ("5000", None)
         stm_cmd     = STM_STRING_CMD.get(upper)
         android_cmd = ANDROID_TURN_CMD.get(upper)
         if stm_cmd is None:
@@ -164,27 +168,40 @@ def instruction_to_commands(
 
 
 # ---------------------------------------------------------------------------
-# STM32 send + wait
+# Build flat command lists from algo segments
 # ---------------------------------------------------------------------------
 
 
-def send_and_wait_stm(stm: STM32Interface, cmd: str) -> Optional[str]:
-    """Send *cmd* to STM32 and poll until it replies ``0000`` or ``DONE``."""
-    print(f"[TASK1] → STM32: '{cmd}'")
-    if not stm.send(cmd, add_newline=False):
-        print("[TASK1] Failed to send to STM32")
-        return None
+def build_command_lists(
+    segments: list[dict[str, Any]],
+) -> tuple[list[str], list[Optional[str]], dict[int, int]]:
+    """
+    Flatten all algo segments into parallel command lists.
 
-    start = time.time()
-    while time.time() - start < STM_RECV_TIMEOUT:
-        response = stm.receive(timeout=0.1)
-        if response:
-            elapsed = time.time() - start
-            print(f"[TASK1] ← STM32: '{response}' ({elapsed:.1f}s)")
-            return response
+    Returns:
+        stm_commands:    List of 4-char STM commands.
+        android_commands: Parallel list of Android UI strings (None for
+                         CAPTURE_IMAGE entries — filled at runtime).
+        capture_map:     ``{ index: obstacle_id }`` for every CAPTURE_IMAGE.
+    """
+    stm_commands: list[str] = []
+    android_commands: list[Optional[str]] = []
+    capture_map: dict[int, int] = {}
 
-    print(f"[TASK1] STM32 response timed out ({STM_RECV_TIMEOUT}s)")
-    return None
+    for segment in segments:
+        obstacle_id = segment.get("image_id", 0)
+        for instruction in segment.get("instructions", []):
+            stm_cmd, android_cmd = instruction_to_commands(instruction)
+            if stm_cmd is None:
+                print(f"[TASK1] Skipping unrecognised instruction: {instruction}")
+                continue
+            idx = len(stm_commands)
+            stm_commands.append(stm_cmd)
+            android_commands.append(android_cmd)
+            if stm_cmd == "5000":
+                capture_map[idx] = obstacle_id
+
+    return stm_commands, android_commands, capture_map
 
 
 # ---------------------------------------------------------------------------
@@ -224,45 +241,71 @@ def capture_image(tracker: DetectionTracker, obstacle_id: int) -> Optional[int]:
 
 
 # ---------------------------------------------------------------------------
-# Execute one segment (one obstacle)
+# Wait for one STM response
 # ---------------------------------------------------------------------------
 
 
-def execute_segment(
-    segment: dict[str, Any],
+def wait_for_stm(stm: STM32Interface) -> Optional[str]:
+    """Poll STM32 for a single response (``DONE`` or ``HALT``)."""
+    start = time.time()
+    while time.time() - start < STM_RECV_TIMEOUT:
+        response = stm.receive(timeout=0.1)
+        if response:
+            elapsed = time.time() - start
+            print(f"[TASK1] ← STM32: '{response}' ({elapsed:.1f}s)")
+            return response.strip()
+    print(f"[TASK1] STM32 response timed out ({STM_RECV_TIMEOUT}s)")
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Execute all commands (batch-send model)
+# ---------------------------------------------------------------------------
+
+
+def execute_all(
     stm: STM32Interface,
     bt: BluetoothInterface,
     tracker: DetectionTracker,
+    stm_commands: list[str],
+    android_commands: list[Optional[str]],
+    capture_map: dict[int, int],
     run_start: float,
 ) -> bool:
     """
-    Execute every instruction in one algo segment.
+    Send the full concatenated STM command string, then process
+    responses one-by-one.
 
-    For each movement/turn:
-      1. Send the Android UI command to Android.
-      2. Send the STM command to STM32 and wait for its acknowledgement.
-
-    For CAPTURE_IMAGE:
-      Run DetectionTracker evaluation and report TARGET to Android.
-
-    Returns False if the 6-minute run timeout was hit or STM became
-    unresponsive, True otherwise.
+    Returns True if all commands completed, False on timeout / error.
     """
-    obstacle_id  = segment.get("image_id", "?")
-    instructions = segment.get("instructions", [])
+    # --- Batch send ---
+    stm_payload = "".join(stm_commands)
+    print(f"[TASK1] → STM32 (batch): '{stm_payload}' "
+          f"({len(stm_commands)} commands, {len(stm_payload)} chars)")
+    if not stm.send(stm_payload, add_newline=False):
+        print("[TASK1] Failed to send batch to STM32")
+        return False
 
-    print(f"\n[TASK1] ══ Segment: obstacle {obstacle_id} "
-          f"({len(instructions)} instructions) ══")
-
-    for instruction in instructions:
-        # --- Check 6-minute timeout ---
+    # --- Response loop ---
+    idx = 0
+    while idx < len(stm_commands):
+        # 6-minute timeout check
         elapsed = time.time() - run_start
         if elapsed > RUN_TIMEOUT:
             print(f"[TASK1] 6-minute timeout reached ({elapsed:.0f}s)")
             return False
 
-        # --- CAPTURE_IMAGE ---
-        if isinstance(instruction, str) and instruction.upper() == "CAPTURE_IMAGE":
+        response = wait_for_stm(stm)
+        if response is None:
+            print("[TASK1] STM32 unresponsive – aborting")
+            return False
+
+        if response == "HALT":
+            # --- CAPTURE_IMAGE: STM is paused, waiting for RESM ---
+            obstacle_id = capture_map.get(idx, 0)
+            print(f"[TASK1] HALT received – running image capture "
+                  f"for obstacle {obstacle_id}")
+
             target_id = capture_image(tracker, obstacle_id)
             if target_id is not None:
                 target_msg = f"TARGET,{obstacle_id},{target_id}"
@@ -270,26 +313,30 @@ def execute_segment(
                 bt.send(target_msg)
             else:
                 print(f"[TASK1] Obstacle {obstacle_id}: identification failed")
-            continue
 
-        # --- Movement / Turn ---
-        stm_cmd, android_cmd = instruction_to_commands(instruction)
-        if stm_cmd is None:
-            print(f"[TASK1] Skipping unrecognised instruction: {instruction}")
-            continue
+            # Resume STM
+            print("[TASK1] → STM32: 'RESM'")
+            stm.send("RESM", add_newline=False)
+            idx += 1
 
-        # 1) Notify Android (UI update)
-        if android_cmd:
-            print(f"[TASK1] → Android: {android_cmd}")
-            bt.send(android_cmd)
+        elif response == "DONE":
+            # --- Normal instruction completed ---
+            android_cmd = android_commands[idx]
+            if android_cmd:
+                print(f"[TASK1] → Android: {android_cmd}")
+                bt.send(android_cmd)
+            idx += 1
 
-        # 2) Execute on STM and wait for ack
-        response = send_and_wait_stm(stm, stm_cmd)
-        if response is None:
-            print("[TASK1] STM32 unresponsive – aborting segment")
-            return False
+        else:
+            print(f"[TASK1] Unexpected STM response: '{response}' "
+                  f"(treating as DONE for idx {idx})")
+            android_cmd = android_commands[idx]
+            if android_cmd:
+                print(f"[TASK1] → Android: {android_cmd}")
+                bt.send(android_cmd)
+            idx += 1
 
-    print(f"[TASK1] ══ Segment for obstacle {obstacle_id} complete ══")
+    print(f"[TASK1] All {len(stm_commands)} commands executed")
     return True
 
 
@@ -308,9 +355,9 @@ def run(
     Top-level event loop.
 
     Collects ROBOT + OBSTACLE messages from Android, then on BEGIN
-    requests a path from the algo service and executes all segments.
-    After completion (or 6-min timeout), sends ``0000`` to STM and
-    waits for the next batch.
+    requests a path from the algo service, batch-sends all instructions
+    to STM, and processes responses.  After completion (or 6-min timeout),
+    sends ``0000`` to STM and waits for the next batch.
     """
     print("\n" + "=" * 60)
     print("  Task 1 – Obstacle Navigation & Image Recognition")
@@ -369,22 +416,29 @@ def run(
             print(f"\n[TASK1] ▶ BEGIN with {len(obstacles)} obstacle(s), "
                   f"robot facing {robot_cfg['direction']}")
 
-            # Request path from algo service
+            # 1) Request path from algo service
             result = algo.request_path(obstacles, robot=robot_cfg)
             if not result or not result.get("segments"):
                 print("[TASK1] Algo returned no path")
                 continue
 
             segments = result["segments"]
-            print(f"[TASK1] Algo returned {len(segments)} segment(s)\n")
+            print(f"[TASK1] Algo returned {len(segments)} segment(s)")
 
-            # Execute all segments
+            # 2) Build flat command lists
+            stm_cmds, android_cmds, capture_map = build_command_lists(segments)
+            print(f"[TASK1] Built {len(stm_cmds)} commands "
+                  f"({len(capture_map)} captures)\n")
+
+            # 3) Execute
             run_start = time.time()
-            for seg in segments:
-                if not execute_segment(seg, stm, bt, tracker, run_start):
-                    break
+            execute_all(
+                stm, bt, tracker,
+                stm_cmds, android_cmds, capture_map,
+                run_start,
+            )
 
-            # Stop the robot
+            # 4) Stop the robot
             elapsed = time.time() - run_start
             print(f"\n[TASK1] Run finished ({elapsed:.1f}s) – sending STOP")
             stm.send("0000", add_newline=False)
