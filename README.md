@@ -18,14 +18,16 @@ This project is a **mini car robot navigation challenge**. The robot must naviga
 │   STM32 Board   │◄──────────────────────►│                 │
 │ (Motor Control) │                        │                 │
 └─────────────────┘                        └────────┬────────┘
-                                                   │
-                                                   │ WiFi Video Stream
-                                                   ▼
-                                          ┌─────────────────┐
-                                          │       PC        │
-                                          │ (YOLO Inference │
-                                          │  + Pathfinding) │
-                                          └─────────────────┘
+                                                    │
+                                           WiFi ────┤
+                                                    │
+                                          ┌─────────┴─────────┐
+                                          │        PC         │
+                                          │  Algo Service     │
+                                          │  (:5001)          │
+                                          │  YOLO Inference   │
+                                          │  (ZMQ :5555/5556) │
+                                          └───────────────────┘
 ```
 
 
@@ -36,91 +38,110 @@ This project is a **mini car robot navigation challenge**. The robot must naviga
 | **Raspberry Pi** | Central communication hub. Bridges STM32, Android tablet, and PC. Hosts Pi Camera for vision. |
 | **STM32 Board** | Controls car motors and movement based on commands from Pi. |
 | **Android Tablet** | User interface for entering obstacle coordinates and navigation info. Connects to Pi via Bluetooth. |
-| **PC (Laptop)** | Runs YOLO model inference for image recognition and pathfinding algorithms. |
+| **PC (Laptop)** | Runs pathfinding algo service (:5001) and YOLO model inference for image recognition. |
 | **Pi Camera** | Captures video stream sent to PC for real-time object detection. |
+
+## Task 1 Flow
+
+1. User enters obstacle positions on the Android tablet.
+2. Android sends `ROBOT`, `OBSTACLE` messages, then `BEGIN` to RPi via Bluetooth.
+3. RPi forwards obstacles to the **algo service** on PC (HTTP POST to `:5001/pathfinding`).
+4. Algo service returns ordered path segments with movement instructions.
+5. RPi translates instructions into STM32 commands, frames them, and batch-sends to STM32.
+6. STM32 executes each 4-byte command sequentially, sending `DONE` after each.
+7. RPi relays each completed instruction to Android as a UI update command.
+8. On `CAPTURE_IMAGE` (`5000`), STM32 sends `HALT`; RPi runs image recognition via the YOLO detection stream, then sends `RESM` to resume.
+9. Identified images are reported to Android as `TARGET,<obstacle>,<target_id>`.
+
+## Android ↔ Raspberry Pi Protocol
+
+**Transport**: Bluetooth RFCOMM (`/dev/rfcomm0`)
+
+### Android → RPi
+
+| Message | Format | Example |
+|---------|--------|---------|
+| Robot start position | `ROBOT,<x>,<y>,<direction>` | `ROBOT,0,0,NORTH` |
+| Obstacle registration | `OBSTACLE,<id>,<x>,<y>,<direction>` | `OBSTACLE,1,120,120,NORTH` |
+| Begin navigation | `BEGIN` | `BEGIN` |
+
+Obstacle coordinates are in raw units (÷10 for grid position, e.g. 120 → grid 12).
+
+### RPi → Android
+
+| Message | Format | Example |
+|---------|--------|---------|
+| Forward/backward | `MOVE,<amount>,<FORWARD\|BACKWARD>` | `MOVE,50,FORWARD` |
+| Arc turn | `TURN,<FORWARD_LEFT\|FORWARD_RIGHT\|BACKWARD_LEFT\|BACKWARD_RIGHT>` | `TURN,FORWARD_LEFT` |
+| Stationary turn | `STAT_TURN,<LEFT\|RIGHT>` | `STAT_TURN,LEFT` |
+| Image identified | `TARGET,<obstacle_id>,<target_id>` | `TARGET,3,12` |
+
+## Raspberry Pi ↔ STM32 Protocol
+
+**Transport**: USB Serial at 115200 baud (`/dev/ttyACM0`)
+
+### Batch Command Frame
+
+Instructions are concatenated and framed as: `<cmd1cmd2...cmdN>checksum`
+
+Checksum = `(sum of all digit characters) % 100`
+
+Example: `<603020206033>25`
+
+### STM32 Command Codes (4 chars each)
+
+| Code | Meaning |
+|------|---------|
+| `0000` | Stop |
+| `1XXX` | Forward XXX cm (e.g. `1030` = 30 cm) |
+| `2XXX` | Backward XXX cm |
+| `3000` | Stationary turn left |
+| `4000` | Stationary turn right |
+| `5000` | Capture image (STM pauses, sends `HALT`, waits for `RESM`) |
+| `6000` | Forward left |
+| `7000` | Forward right |
+| `8000` | Backward left |
+| `9000` | Backward right |
+
+### STM32 → RPi Responses
+
+| Response | Meaning |
+|----------|---------|
+| `DONE` | Instruction completed, proceed to next |
+| `HALT` | Paused at `5000`, waiting for RPi to finish image capture and send `RESM` |
 
 ## Image Recognition
 
-- Video is streamed from Pi Camera to PC over WiFi
+- Video is streamed from Pi Camera to PC over ZMQ (port 5555)
 - PC runs YOLO model to detect and identify numbers on obstacles
-- Results are used for navigation decisions
+- Detection results are published back to RPi over ZMQ (port 5556)
+- RPi uses a rolling detection window (majority vote) to confirm identifications
 
-## STM32-RPI USB Interface
+## Directory Structure
 
-The `stm32/` folder contains the USB serial interface for communication between the Raspberry Pi and STM32F Board.
+| Directory | Description |
+|-----------|-------------|
+| `rpi/` | Raspberry Pi modules – see [rpi/README.md](rpi/README.md) |
+| `stm32/` | STM32 USB serial interface and test scripts |
+| `service/` | Algo pathfinding REST API service (Flask, port 5001) |
+| `imageReg/` | YOLO image recognition and PC-side receiver |
 
-### Hardware Connection
-- Connect STM32F Board's **UART2 port** (middle Micro USB port) to Raspberry Pi USB
-- Communication runs at **115200 baudrate**
-- Interface file: `/dev/ttyACM0` or `/dev/ttyUSB0` (auto-detected)
-
-### Quick Start
-
-```bash
-cd stm32/src
-pip install pyserial
-
-# Test connection
-python test_connection.py
-```
-
-### Usage
-
-```python
-from stm32_interface import STM32Interface
-
-with STM32Interface() as stm:
-    stm.send("FW050")  # Send command
-    response = stm.receive()  # Get response
-```
-
-See `stm32/src/INSTRUCTION.md` for detailed setup instructions.
-
-## Android ↔ Raspberry Pi Command Protocol (High-Level)
-
-- **Transport**: Bluetooth RFCOMM.
-- On Raspberry Pi this is typically exposed as a serial device created by a startup service, e.g.:
+## Quick Start
 
 ```bash
-sudo rfcomm listen /dev/rfcomm0 1
+# 1. Start algo service on PC
+cd service
+pipenv install && pipenv shell
+python app.py
+
+# 2. Start image recognition on PC
+cd imageReg/src
+python main.py
+
+# 3. On Raspberry Pi
+cd rpi
+sudo rfcomm listen /dev/rfcomm0 1 &
+python task1.py --pc-host <PC_IP>
 ```
 
-- The Raspberry Pi program (`rpi/main.py`) can then read and write text lines over `/dev/rfcomm0`.
-
-### Commands from Android to Raspberry Pi
-
-- **Grid position request** (logical target in 2m×2m arena):
-  - Format: `ROBOT|<y>,<x>,<DIRECTION>`
-  - Example: `ROBOT|1,3,NORTH`
-- **Movement command**:
-  - Format: `MOVE,<distance_cm>,<DIRECTION>`
-  - Example: `MOVE,30,FORWARD`
-- **Turn command**:
-  - Format: `TURN,<LEFT|RIGHT>`
-  - Example: `TURN,LEFT`
-
-The Raspberry Pi is responsible for interpreting these high-level commands and converting them into low-level motion instructions for the STM32.
-
-## Raspberry Pi ↔ STM32 Movement Frames
-
-All multi-byte values are **little-endian** (matching the STM32's native byte order).
-
-- **Pi → STM32 (command frame, 4 bytes)**:
-  - Byte 0: **Direction code** (uint8)  
-    - `0` = STOP  
-    - `1` = FORWARD  
-    - `2` = BACKWARD  
-    - `3` = LEFT  
-    - `4` = RIGHT
-  - Bytes 1–2: **Distance to travel** in centimetres (uint16 LE, 0–200 cm).
-  - Byte 3: **Padding** (0x00).
-
-- **STM32 → Pi (status frame, 4 bytes)**:
-  - Byte 0: **Angle** (Z-axis rotation, uint8).
-  - Bytes 1–2: **Accumulated distance travelled** in centimetres (uint16 LE).
-  - Byte 3: **Padding** (0x00).
-
-**Control logic (Pi side, planned):**
-- When a movement command is issued, Raspberry Pi sends a 4-byte command frame to STM32.
-- Raspberry Pi then reads 4-byte status frames from STM32 and tracks the accumulated distance.
-- Once the accumulated distance reported by STM32 equals the commanded distance, Raspberry Pi sends a **STOP** command (direction code `0`) to halt the robot.
+See individual component READMEs for detailed setup instructions.
