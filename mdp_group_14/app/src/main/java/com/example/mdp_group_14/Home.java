@@ -265,7 +265,7 @@ public class Home extends Fragment {
         if ((x - 2)>=0 && (y - 1)>=0)
         {
 //          BluetoothCommunications.getMessageReceivedTextView().append("ROBOT" + "," + (col - 2)*5 + "," + (row - 1)*5 + "," + dir.toUpperCase());
-            Home.printMessage("ROBOT" + "," + (x-2)*5 + "," + (y-1)*5 + "," + dir.toUpperCase());
+            Home.printMessage("ROBOT" + "," + x + "," + y + "," + dir.toUpperCase());
         }
         else{
             showLog("out of grid");
@@ -329,67 +329,101 @@ public class Home extends Fragment {
 
             //receives string that is wrapped in intent from local broadcast from bluetoothconnectionservice.java
             String message = intent.getStringExtra("receivedMessage");
+            if (message == null) return;
+            message = message.trim();
             showLog("receivedMessage: message --- " + message);
 
-            String[] cmdd = message.split(",");
-
-
-            int[] global_store = gridMap.getCurCoord();
-            g_coordX = global_store[0];
-            g_coordY = global_store[1];
-            ArrayList<String> mapCoord = new ArrayList<>();
-
-            //STATUS:<input>
+            // STATUS:<input>
             if (message.contains("STATUS")) {
-                robotStatusTextView.setText(message.split(":")[1]);
+                String[] parts = message.split(":");
+                if (parts.length > 1) {
+                    robotStatusTextView.setText(parts[1]);
+                }
             }
-            //ROBOT|5,4,EAST (Early version of updating robot position via comms)
-            if(message.contains("ROBOT")) {
-                String[] cmd = message.split("\\|");
-                String[] sentCoords = cmd[1].split(",");
-                String[] sentDirection = sentCoords[2].split("\\.");
-//                BluetoothCommunications.getMessageReceivedTextView().append("\n");
-                String direction = "";
-                String abc = String.join("", sentDirection);
-                if (abc.contains("EAST")) {
-                    direction = "right";
+            // ROBOT|y,x,DIR or ROBOT,y,x,DIR
+            else if(message.contains("ROBOT")) {
+                try {
+                    String[] cmd = message.contains("|") ? message.split("\\|") : message.split(",");
+                    String[] sentCoords;
+                    String direction = "";
+
+                    if (message.contains("|")) {
+                        // Expected format: ROBOT|y,x,DIRECTION
+                        sentCoords = cmd[1].split(",");
+                    } else {
+                        // Expected format: ROBOT,y,x,DIRECTION
+                        sentCoords = new String[]{cmd[1], cmd[2]};
+                        if (cmd.length > 3) {
+                            String dirText = cmd[3].toUpperCase();
+                            if (dirText.contains("EAST")) direction = "right";
+                            else if (dirText.contains("NORTH")) direction = "up";
+                            else if (dirText.contains("WEST")) direction = "left";
+                            else if (dirText.contains("SOUTH")) direction = "down";
+                        }
+                    }
+
+                    if (sentCoords.length >= 2) {
+                        int y = Integer.parseInt(sentCoords[0].trim());
+                        int x = Integer.parseInt(sentCoords[1].trim());
+                        
+                        // If direction wasn't set by comma format, try to get it from pipe format
+                        if (direction.isEmpty() && message.contains("|") && sentCoords.length > 2) {
+                            String dirText = sentCoords[2].toUpperCase();
+                            if (dirText.contains("EAST")) direction = "right";
+                            else if (dirText.contains("NORTH")) direction = "up";
+                            else if (dirText.contains("WEST")) direction = "left";
+                            else if (dirText.contains("SOUTH")) direction = "down";
+                        }
+
+                        gridMap.setCurCoord(x + 2, 19 - y, direction);
+                    }
+                } catch (Exception e) {
+                    showLog("Error parsing ROBOT message: " + e.getMessage());
                 }
-                else if (abc.contains("NORTH")) {
-                    direction = "up";
+            }
+            // STATIONARY_TURN,<DIRECTION>
+            else if (message.contains("STAT_TURN")) {
+                try {
+                    String[] cmd = message.split(",");
+                    if (cmd.length >= 2) {
+                        String turnDir = cmd[1].trim().toUpperCase();
+                        String currentDir = gridMap.getRobotDirection();
+                        String newDir = currentDir;
+
+                        if (turnDir.equals("RIGHT")) {
+                            switch (currentDir) {
+                                case "up": newDir = "right"; break;
+                                case "right": newDir = "down"; break;
+                                case "down": newDir = "left"; break;
+                                case "left": newDir = "up"; break;
+                            }
+                        } else if (turnDir.equals("LEFT")) {
+                            switch (currentDir) {
+                                case "up": newDir = "left"; break;
+                                case "left": newDir = "down"; break;
+                                case "down": newDir = "right"; break;
+                                case "right": newDir = "up"; break;
+                            }
+                        }
+                        
+                        if (!newDir.equals(currentDir)) {
+                            refreshDirection(newDir);
+                            refreshLabel();
+                        }
+                    }
+                } catch (Exception e) {
+                    showLog("Error parsing STATIONARY_TURN: " + e.getMessage());
                 }
-                else if (abc.contains("WEST")) {
-                    direction = "left";
-                }
-                else if (abc.contains("SOUTH")) {
-                    direction = "down";
-                }
-                else{
-                    direction = "";
-                }
-                gridMap.setCurCoord(Integer.valueOf(sentCoords[1]) + 2, 19 - Integer.valueOf(sentCoords[0]), direction);
             }
             //image format from RPI is "TARGET~<obID>~<ImValue>" eg TARGET~3~7
             else if(message.contains("TARGET")) {
                 try {
                     String[] cmd = message.split(",");
-                    String temp2="-1";
                     BluetoothCommunications.getMessageReceivedTextView().append("Obstacle no: "
-                            + cmd[1]+ "TARGET ID: " + cmd[2] + "\n");
-
-//                    if (cmd[2].contains("STOP"))
-//                    {
-//                        String temp=cmd[2];
-//                        String[] temp1=temp.split(" ");
-//                        temp2=temp1[0];
-//
-//                    }
+                            + cmd[1]+ " TARGET ID: " + cmd[2] + "\n");
 
                     gridMap.updateIDFromRpi(String.valueOf(Integer.valueOf(cmd[1])-1), cmd[2]);
                     obstacleID = String.valueOf(Integer.valueOf(cmd[1]) - 2);
-
-
-//                    int ob= Integer.parseInt(obstacleID);
-
                 }
                 catch(Exception e)
                 {
@@ -398,42 +432,23 @@ public class Home extends Fragment {
             }
             else if(message.contains("ARROW")){
                 String[] cmd = message.split(",");
-//                BluetoothCommunications.getMessageReceivedTextView().append("Obstacle no: " + cmd[1]+ "TARGET ID: " + cmd[2] + "\n");
-
                 Home.refreshMessageReceivedNS("TASK2"+"\n");
                 Home.refreshMessageReceivedNS("obstacle id: "+cmd[1]+", ARROW: "+cmd[2]);
-
-
-//                updateStatus(cmd[0]+" "+ cmd[1]+" "+cmd[2]);
             }
-            // OLD VER: Expects a syntax of e.g. Algo|f010. Commented out and implemented new version below
-/*            if(message.contains("Algo")) {
-                // translate the message after Algo|
-                if(trackRobot)
-                    pathTranslator.translatePath(message.split("\\|")[1]);
-//                pathTranslator.altTranslation(message.split("\\|")[1]);   // last min addition - untested
-            }*/
-
-            //NEW VER: Expects a syntax of eg. MOVE,<DISTANCE IN CM>,<DIRECTION>.
-            //NEW VER: Expects a syntax of eg. TURN,<DIRECTION>.
-
-            //CASE 1 & 2: MoveInstruction or TurnInstruction sent
             else if(message.contains("MOVE") || message.contains("TURN")){
                 updateStatus("translation");
-                pathTranslator.translatePath(message); //splitting and translation will be done in PathTranslator
+                pathTranslator.translatePath(message); 
             }
             else if(message.contains("STOP"))
             {
                 Home.refreshMessageReceivedNS("STOP received");
-//                showLog("received Stop");
                 Home.stopTimerFlag = true;
                 Home.stopWk9TimerFlag=true;
                 timerHandler.removeCallbacks(ControlFragment.timerRunnableExplore);
                 timerHandler.removeCallbacks(ControlFragment.timerRunnableFastest);
             }
             else{
-                //BluetoothCommunications.getMessageReceivedTextView().append("unknown message received");
-                showLog("unknown message received");
+                showLog("unknown message received: " + message);
             }
         }
     };

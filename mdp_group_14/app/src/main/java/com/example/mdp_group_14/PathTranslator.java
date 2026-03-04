@@ -8,7 +8,7 @@ public class PathTranslator {
     private static final String TAG = "PathTranslator";
     private static GridMap gridMap;
     private static final int CELL_LENGTH = 10; //length of each cell in cm
-    private static final int MILLI_DELAY = 200;    // delay between movement commands
+    private static final int MILLI_DELAY = 50;    // delay between movement commands
 
     private static final int LEFT_TURNING_RADIUS = 40;
     private static final int RIGHT_TURNING_RADIUS = 41;
@@ -78,14 +78,14 @@ public class PathTranslator {
                     case 'f':
                         for(int i = 0; i < moves; i++) {
                             updateUI("forward");
-                            Home.printMessage("MOVE,10,FORWARD");
+                            //Home.printMessage("MOVE,10,FORWARD");
                             try { Thread.sleep(MILLI_DELAY); } catch(InterruptedException e) {}
                         }
                         break;
                     case 'b':
                         for(int i = 0; i < moves; i++) {
                             updateUI("back");
-                            Home.printMessage("MOVE,10,BACKWARD");
+                            //Home.printMessage("MOVE,10,BACKWARD");
                             try { Thread.sleep(MILLI_DELAY); } catch(InterruptedException e) {}
                         }
                         break;

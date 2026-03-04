@@ -5,235 +5,112 @@ import java.util.AbstractMap.*;
 import java.util.function.BiFunction;
 
 import java.util.ArrayList;
-import java.util.function.BiFunction;
 
 public class Turn {
 
     public static Map.Entry<String, ArrayList<Integer[]>> turn(Integer[] start, String direction, String turn) {
-        int radius = radius(turn);
-        Integer[] initial;
+        int f = 3; // Forward movement
+        int s = 4; // Sideways movement
+        
         switch (direction) {
             case "up":
                 switch (turn) {
                     case "left":
                         return new SimpleEntry<>(
                           "left",
-                          curve(
-                            start,
-                            new Integer[] {start[0] - radius - 1, start[1] + radius},
-                            radius,
-                            start[0] - radius,
-                            start[1],
-                            1
-                          )
+                          curve(start, new Integer[] {start[0] - s, start[1] + f}, s, start[0] - s, start[1], 1)
                         );
                     case "right":
                         return new SimpleEntry<>(
                           "right",
-                          curve(
-                            start,
-                            new Integer[] {start[0] + radius, start[1] + radius - 1},
-                            radius,
-                            start[0] + radius,
-                            start[1],
-                            2
-                          )
+                          curve(start, new Integer[] {start[0] + s, start[1] + f}, s, start[0] + s, start[1], 2)
                         );
                     case "backleft":
                         return new SimpleEntry<>(
                           "right",
-                          curve(
-                            start,
-                            new Integer[] {start[0] - radius, start[1] - radius - 1},
-                            radius,
-                            start[0] - radius,
-                            start[1],
-                            4
-                          )
+                          curve(start, new Integer[] {start[0] - s, start[1] - f}, s, start[0] - s, start[1], 4)
                         );
                     case "backright":
                         return new SimpleEntry<>(
                           "left",
-                          curve(
-                            start,
-                            new Integer[] {start[0] + radius - 1, start[1] - radius},
-                            radius,
-                            start[0] + radius,
-                            start[1],
-                            3
-                          )
+                          curve(start, new Integer[] {start[0] + s, start[1] - f}, s, start[0] + s, start[1], 3)
                         );
                 }
 
             case "right":
-                initial = new Integer[] {start[0], start[1] + 1};
                 switch (turn) {
                     case "left":
                         return new SimpleEntry<>(
                           "up",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] + radius, initial[1] + radius},
-                            radius,
-                            initial[0],
-                            initial[1] + radius,
-                            4
-                          )
+                          curve(start, new Integer[] {start[0] + f, start[1] + s}, s, start[0], start[1] + s, 4)
                         );
-
                     case "right":
                         return new SimpleEntry<>(
                           "down",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] + radius - 1, initial[1] - radius - 1},
-                            radius,
-                            initial[0],
-                            initial[1] - radius,
-                            1
-                          )
+                          curve(start, new Integer[] {start[0] + f, start[1] - s}, s, start[0], start[1] - s, 1)
                         );
                     case "backleft":
                         return new SimpleEntry<>(
                           "down",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] - radius - 1, initial[1] + radius - 1},
-                            radius,
-                            initial[0],
-                            initial[1] + radius,
-                            3
-                          )
+                          curve(start, new Integer[] {start[0] - f, start[1] + s}, s, start[0], start[1] + s, 3)
                         );
                     case "backright":
                         return new SimpleEntry<>(
                           "up",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] - radius, initial[1] - radius},
-                            radius,
-                            initial[0],
-                            initial[1] - radius,
-                            2
-                          )
+                          curve(start, new Integer[] {start[0] - f, start[1] - s}, s, start[0], start[1] - s, 2)
                         );
                 }
 
             case "down":
-                initial = new Integer[] {start[0] + 1, start[1] + 1};
                 switch (turn) {
                     case "left":
                         return new SimpleEntry<>(
                           "right",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] + radius, initial[1] - radius - 1},
-                            radius,
-                            initial[0] + radius,
-                            initial[1],
-                            3
-                          )
+                          curve(start, new Integer[] {start[0] + s, start[1] - f}, s, start[0] + s, start[1], 3)
                         );
                     case "right":
                         return new SimpleEntry<>(
                           "left",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] - radius - 1, initial[1] - radius},
-                            radius,
-                            initial[0] - radius,
-                            initial[1],
-                            4
-                          )
+                          curve(start, new Integer[] {start[0] - s, start[1] - f}, s, start[0] - s, start[1], 4)
                         );
                     case "backleft":
                         return new SimpleEntry<>(
                           "left",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] + radius - 1, initial[1] + radius},
-                            radius,
-                            initial[0] + radius,
-                            initial[1],
-                            2
-                          )
+                          curve(start, new Integer[] {start[0] + s, start[1] + f}, s, start[0] + s, start[1], 2)
                         );
                     case "backright":
                         return new SimpleEntry<>(
                           "right",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] - radius, initial[1] + radius - 1},
-                            radius,
-                            initial[0] - radius,
-                            initial[1],
-                            1
-                          )
+                          curve(start, new Integer[] {start[0] - s, start[1] + f}, s, start[0] - s, start[1], 1)
                         );
                 }
 
             case "left":
-                initial = new Integer[] {start[0] + 1, start[1]};
                 switch (turn) {
                     case "left":
                         return new SimpleEntry<>(
                           "down",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] - radius - 1, initial[1] - radius - 1},
-                            radius,
-                            initial[0] - radius,
-                            initial[1],
-                            2
-                          )
+                          curve(start, new Integer[] {start[0] - f, start[1] - s}, s, start[0], start[1] - s, 2)
                         );
-
                     case "right":
                         return new SimpleEntry<>(
                           "up",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] - radius, initial[1] + radius},
-                            radius,
-                            initial[0],
-                            initial[1] + radius,
-                            3
-                          )
+                          curve(start, new Integer[] {start[0] - f, start[1] + s}, s, start[0], start[1] + s, 3)
                         );
-
                     case "backleft":
                         return new SimpleEntry<>(
                           "up",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] + radius, initial[1] - radius},
-                            radius,
-                            initial[0],
-                            initial[1] - radius,
-                            1
-                          )
+                          curve(start, new Integer[] {start[0] + f, start[1] - s}, s, start[0], start[1] - s, 1)
                         );
-
                     case "backright":
                         return new SimpleEntry<>(
                           "down",
-                          curve(
-                            initial,
-                            new Integer[] {initial[0] + radius - 1, initial[1] + radius - 1},
-                            radius,
-                            initial[0],
-                            initial[1] + radius,
-                            4
-                          )
+                          curve(start, new Integer[] {start[0] + f, start[1] + s}, s, start[0], start[1] + s, 4)
                         );
                 }
         }
 
         throw new IllegalStateException("Invalid robot direction: " + direction + " & turn direction: " + turn);
-    }
-
-    static int radius(String direction) {
-        return 3;
     }
 
     static ArrayList<Integer[]> curve(Integer[] initial, Integer[] destination, int radius, int centreX, int centreY, int quadrant) {
