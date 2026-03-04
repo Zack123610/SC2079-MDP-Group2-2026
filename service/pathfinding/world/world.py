@@ -92,7 +92,7 @@ class World:
             return False
         
         if not self.grid[vector.y, vector.x]:
-            print(f"  ❌ Cell ({vector.x},{vector.y}) is blocked in grid")
+            # print(f"  ❌ Cell ({vector.x},{vector.y}) is blocked in grid")
             return False
 
         # Also check robot footprint doesn't exceed bounds

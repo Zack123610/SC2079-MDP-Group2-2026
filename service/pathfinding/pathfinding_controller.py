@@ -53,9 +53,7 @@ class PathfindingRequestRobot(BaseModel):
 
         # This is a workaround to ensure that the centre point isn't off-centre. It is to workaround incorrect turning
         # calculation.
-        if (north_east.x - south_west.x) % 2 != 0 and (
-            north_east.y - south_west.y
-        ) % 2 != 0:
+        if (north_east.x - south_west.x) % 2 != 0 and (north_east.y - south_west.y) % 2 != 0:
             north_east = Point(north_east.x + 1, north_east.y + 1)
 
         return Robot(self.direction, south_west, north_east)
@@ -164,6 +162,7 @@ def pathfinding(body: PathfindingRequest):
         pathfinding_response.model_dump(mode="json"), HTTPStatus.OK
     )
     response.mimetype = "application/json"
+    print('response', response.get_data(as_text=True)) # print response
     return response
 
 
