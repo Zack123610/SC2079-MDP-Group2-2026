@@ -500,7 +500,7 @@ def run(
             # 4) Stop the robot
             elapsed = time.time() - run_start
             print(f"\n[TASK1] Run finished ({elapsed:.1f}s) – sending STOP")
-            stm.send("0000", add_newline=False)
+            stm.send("<0000>", add_newline=False)
 
             # Reset for next run
             obstacles.clear()
