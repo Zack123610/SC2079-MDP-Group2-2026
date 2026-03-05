@@ -49,7 +49,7 @@ Request body:
 ```
 {
   "robot": {
-    "direction": "EAST",
+    "direction": "NORTH",
     "south_west": { "x": 0, "y": 0 },
     "north_east": { "x": 1, "y": 1 }
   },

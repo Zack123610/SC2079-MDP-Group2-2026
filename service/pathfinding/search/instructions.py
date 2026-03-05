@@ -46,13 +46,21 @@ class TurnInstruction(str, Enum):
         """
         match self:
             case TurnInstruction.FORWARD_LEFT:
-                return 39 // cell_size
-            case TurnInstruction.FORWARD_RIGHT:
                 return 40 // cell_size
+            case TurnInstruction.FORWARD_RIGHT:
+                return 48 // cell_size
             case TurnInstruction.BACKWARD_LEFT:
-                return 37 // cell_size
+                return 27 // cell_size
             case TurnInstruction.BACKWARD_RIGHT:
-                return 39 // cell_size
+                return 29 // cell_size
+    
+    def straight_offset(self, cell_size: int) -> int:
+        """The 'forward/backward' component of the asymmetrical turn."""
+        match self:
+            case TurnInstruction.FORWARD_LEFT: return 5 // cell_size
+            case TurnInstruction.FORWARD_RIGHT: return 8 // cell_size
+            case TurnInstruction.BACKWARD_LEFT: return 22 // cell_size
+            case TurnInstruction.BACKWARD_RIGHT: return 22 // cell_size
 
     def arc_length(self, cell_size: int) -> int:
         return round(self.radius(cell_size) * (pi / 2))

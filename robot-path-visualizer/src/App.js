@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const GRID_SIZE = 20;
+const GRID_SIZE = 40;
 const CELL_SIZE = 40; // pixels
+
+const cell_size_cm = 5; // Each cell represents 5cm
 
 const GridVisualization = () => {
   // State
@@ -10,7 +12,7 @@ const GridVisualization = () => {
   const [robot, setRobot] = useState({
     direction: 'EAST',
     south_west: { x: 0, y: 0 },
-    north_east: { x: 2, y: 2 }
+    north_east: { x: 30 / cell_size_cm - 1, y: 30 / cell_size_cm - 1 }
   });
   const [pathData, setPathData] = useState(null);
   const [animation, setAnimation] = useState({
@@ -28,7 +30,7 @@ const GridVisualization = () => {
   const pathPoints = pathData?.path || [];
 
   // Start zone (40x40cm = 4x4 cells)
-  const startZone = { x1: 0, y1: 0, x2: 3, y2: 3 };
+  const startZone = { x1: 0, y1: 0, x2: 40 / cell_size_cm - 1, y2: 40 / cell_size_cm - 1 };
 
   // Calculate robot center position from path point
   const getRobotPosition = (step) => {
@@ -190,7 +192,7 @@ const GridVisualization = () => {
       id: newId,
       direction: direction,
       south_west: { x, y },
-      north_east: { x, y }
+      north_east: { x: x + 1, y: y + 1 }
     };
     
     setObstacles([...obstacles, newObstacle]);

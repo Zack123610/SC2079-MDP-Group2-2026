@@ -53,12 +53,13 @@ def segment(world: World, initial: Vector, objectives: dict[Obstacle, tuple[Vect
             new_cost = costs[current]
             match move:
                 case Turn():
-                    new_cost += move.turn.arc_length(world.cell_size)
+                    turn_penalty = 100  # Arbitrary penalty for turns to prefer straights when costs are equal
+                    new_cost += move.turn.arc_length(world.cell_size) * turn_penalty
                 case Move():
                     new_cost += len(move.vectors)
 
             if next not in costs or new_cost < costs[next]:
-                frontier.add(new_cost, next)
+                frontier.add(new_cost + __heuristic(next, objectives), next)
                 source[next] = current
                 moves[next] = move
                 costs[next] = new_cost
