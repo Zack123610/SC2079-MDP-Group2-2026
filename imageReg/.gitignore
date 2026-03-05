@@ -1,0 +1,14 @@
+/*.md
+*.pdf
+
+# UV Ignored Files
+*/.python-version
+*/.venv
+*/uv.lock
+
+# YOLO Model Files
+*.pt
+*.zip
+
+# YOLO Data Files
+data/

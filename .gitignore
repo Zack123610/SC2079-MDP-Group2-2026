@@ -1,0 +1,16 @@
+# STM32 Files
+stm32/*
+stm32_C/*
+
+# YOLO Model Training Files
+runs/*
+
+# Algo Service
+algo_service/*
+**/__pycache__/
+
+# RPi
+rpi/task1-one-by-one.py
+
+# Image Recognition
+imageReg/src/raw_tcp/*
