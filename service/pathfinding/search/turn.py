@@ -7,21 +7,22 @@ def turn(world: World, start: Vector, instruction: TurnInstruction) -> list[Vect
     Performs an asymmetrical turn with lead-in/lead-out offsets and a safety buffer.
     """
     # 1. Physical Constants from your requirements
-    # We add a 2-cell safety buffer to the radius to prevent clipping
-    safety_buffer = 2 
+    # We add a 10cm safety buffer to the radius to prevent clipping
+    safety_buffer = 10 // world.cell_size 
     radius = instruction.radius(world.cell_size) + safety_buffer
     
     # Lead distance (Forward/Backward component)
     lead = instruction.straight_offset(world.cell_size)
     
+    print(f"DEBUG: Instruction {instruction.name}, Lead Cells: {lead}, Radius Cells: {radius}")
+    
     # Helper to generate straight points for the lead-in
     def get_lead_points(origin: Vector, dist: int, direction: Direction):
         pts = []
         for i in range(1, dist + 1):
-            if direction == Direction.NORTH: pts.append(Vector(direction, origin.x, origin.y + i))
-            elif direction == Direction.SOUTH: pts.append(Vector(direction, origin.x, origin.y - i))
-            elif direction == Direction.EAST: pts.append(Vector(direction, origin.x + i, origin.y))
-            elif direction == Direction.WEST: pts.append(Vector(direction, origin.x - i, origin.y))
+            dx, dy = {Direction.NORTH: (0, 1), Direction.SOUTH: (0, -1), 
+                      Direction.EAST: (1, 0), Direction.WEST: (-1, 0)}[direction]
+            pts.append(Vector(direction, origin.x + dx*i, origin.y + dy*i))
         return pts
 
     path_lead = []
@@ -34,44 +35,116 @@ def turn(world: World, start: Vector, instruction: TurnInstruction) -> list[Vect
             path_lead = get_lead_points(start, lead, Direction.NORTH)
             pivot = path_lead[-1] if path_lead else start
             curve_res = __curve(world, radius, Vector(Direction.WEST, pivot.x - radius, pivot.y + radius), 
-                                pivot.x - radius, pivot.y, 1)
+                                pivot.x - radius, pivot.y, quadrant="TOP_RIGHT")
 
         case (Direction.NORTH, TurnInstruction.FORWARD_RIGHT):
             # 8cm forward, then 48cm arc to the right
             path_lead = get_lead_points(start, lead, Direction.NORTH)
             pivot = path_lead[-1] if path_lead else start
             curve_res = __curve(world, radius, Vector(Direction.EAST, pivot.x + radius, pivot.y + radius), 
-                                pivot.x + radius, pivot.y, 2)
+                                pivot.x + radius, pivot.y, quadrant="TOP_LEFT")
 
         case (Direction.NORTH, TurnInstruction.BACKWARD_LEFT):
             # 22cm backward, then 27cm arc to the left (resulting in East)
             path_lead = get_lead_points(start, lead, Direction.SOUTH)
             pivot = path_lead[-1] if path_lead else start
             curve_res = __curve(world, radius, Vector(Direction.EAST, pivot.x - radius, pivot.y - radius), 
-                                pivot.x - radius, pivot.y, 4)
+                                pivot.x - radius, pivot.y, quadrant="BOTTOM_RIGHT")
 
         case (Direction.NORTH, TurnInstruction.BACKWARD_RIGHT):
             # 22cm backward, then 29cm arc to the right (resulting in West)
             path_lead = get_lead_points(start, lead, Direction.SOUTH)
             pivot = path_lead[-1] if path_lead else start
             curve_res = __curve(world, radius, Vector(Direction.WEST, pivot.x + radius, pivot.y - radius), 
-                                pivot.x + radius, pivot.y, 3)
+                                pivot.x + radius, pivot.y, quadrant="BOTTOM_LEFT")
 
         # --- EAST FACING ---
         case (Direction.EAST, TurnInstruction.FORWARD_LEFT):
             path_lead = get_lead_points(start, lead, Direction.EAST)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius, Vector(Direction.NORTH, pivot.x + radius, pivot.y + radius), 
-                                pivot.x, pivot.y + radius, 4)
+            curve_res = __curve(world, radius, 
+                                Vector(Direction.NORTH, pivot.x + radius, pivot.y + radius), 
+                                pivot.x, pivot.y + radius, quadrant="BOTTOM_LEFT")
+
+        case (Direction.EAST, TurnInstruction.FORWARD_RIGHT):
+            path_lead = get_lead_points(start, lead, Direction.EAST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius, 
+                                Vector(Direction.SOUTH, pivot.x + radius, pivot.y - radius), 
+                                pivot.x, pivot.y - radius, quadrant="TOP_LEFT")
+
+        case (Direction.EAST, TurnInstruction.BACKWARD_LEFT):
+            path_lead = get_lead_points(start, lead, Direction.WEST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius, 
+                                Vector(Direction.SOUTH, pivot.x - radius, pivot.y - radius), 
+                                pivot.x, pivot.y - radius, quadrant="TOP_RIGHT")
 
         case (Direction.EAST, TurnInstruction.BACKWARD_RIGHT):
             path_lead = get_lead_points(start, lead, Direction.WEST)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius, Vector(Direction.NORTH, pivot.x - radius, pivot.y - radius), 
-                                pivot.x, pivot.y - radius, 2)
+            curve_res = __curve(world, radius, 
+                                Vector(Direction.NORTH, pivot.x - radius, pivot.y + radius), 
+                                pivot.x, pivot.y + radius, quadrant="BOTTOM_RIGHT")
+        
+                # --- SOUTH FACING ---
+        case (Direction.SOUTH, TurnInstruction.FORWARD_LEFT):
+            path_lead = get_lead_points(start, lead, Direction.SOUTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.EAST, pivot.x + radius, pivot.y - radius),
+                                pivot.x + radius, pivot.y, quadrant="TOP_LEFT")
 
-        # Note: Repeat similar logic for SOUTH and WEST directions...
-        # Use the lead-in logic to shift the center of the arc.
+        case (Direction.SOUTH, TurnInstruction.FORWARD_RIGHT):
+            path_lead = get_lead_points(start, lead, Direction.SOUTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.WEST, pivot.x - radius, pivot.y - radius),
+                                pivot.x - radius, pivot.y, quadrant="TOP_RIGHT")
+
+        case (Direction.SOUTH, TurnInstruction.BACKWARD_LEFT):
+            path_lead = get_lead_points(start, lead, Direction.NORTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.WEST, pivot.x - radius, pivot.y + radius),
+                                pivot.x - radius, pivot.y, quadrant="BOTTOM_RIGHT")
+
+        case (Direction.SOUTH, TurnInstruction.BACKWARD_RIGHT):
+            path_lead = get_lead_points(start, lead, Direction.NORTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.EAST, pivot.x + radius, pivot.y + radius),
+                                pivot.x + radius, pivot.y, quadrant="BOTTOM_LEFT")
+
+        # --- WEST FACING ---
+        case (Direction.WEST, TurnInstruction.FORWARD_LEFT):
+            path_lead = get_lead_points(start, lead, Direction.WEST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.SOUTH, pivot.x - radius, pivot.y - radius),
+                                pivot.x, pivot.y - radius, quadrant="TOP_RIGHT")
+
+        case (Direction.WEST, TurnInstruction.FORWARD_RIGHT):
+            path_lead = get_lead_points(start, lead, Direction.WEST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.NORTH, pivot.x - radius, pivot.y + radius),
+                                pivot.x, pivot.y + radius, quadrant="BOTTOM_RIGHT")
+
+        case (Direction.WEST, TurnInstruction.BACKWARD_LEFT):
+            path_lead = get_lead_points(start, lead, Direction.EAST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.NORTH, pivot.x + radius, pivot.y + radius),
+                                pivot.x, pivot.y + radius, quadrant="BOTTOM_LEFT")
+
+        case (Direction.WEST, TurnInstruction.BACKWARD_RIGHT):
+            path_lead = get_lead_points(start, lead, Direction.EAST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.SOUTH, pivot.x + radius, pivot.y - radius),
+                                pivot.x, pivot.y - radius, quadrant="TOP_LEFT")
+
 
     if curve_res is None:
         return None
@@ -351,75 +424,53 @@ def turn(world: World, start: Vector, instruction: TurnInstruction) -> list[Vect
             )
 '''
 
-
-def __curve(
-    world: World,
-    turning_radius: int,
-    end: Vector,
-    centre_x: int,
-    centre_y: int,
-    quadrant: int,
-) -> list[Vector] | None:
-    """
-    Uses a modified Midpoint circle algorithm to determine a continuous, 
-    chronological path for a robot turn.
-    """
-    assert 1 <= quadrant <= 4
-
-    x = turning_radius
-    y = 0
-    err = 0
-
-    # We use two lists to collect points from the two ends of the 90-degree arc
-    # path_start builds from the axis towards the 45-degree diagonal
-    # path_end builds from the other axis towards the 45-degree diagonal
+def __curve(world, radius, end, centre_x, centre_y, quadrant) -> list[Vector] | None:
     path_start = []
     path_end = []
-
-    # Map the circle coordinates to the specific world quadrant
-    match quadrant:
-        case 1: # North to East (or East to North)
-            a_map = lambda _x, _y: Vector(end.direction, centre_x + _x, centre_y + _y)
-            b_map = lambda _x, _y: Vector(end.direction, centre_x + _y, centre_y + _x)
-        case 2: # North to West
-            a_map = lambda _x, _y: Vector(end.direction, centre_x - _y, centre_y + _x)
-            b_map = lambda _x, _y: Vector(end.direction, centre_x - _x, centre_y + _y)
-        case 3: # South to West
-            a_map = lambda _x, _y: Vector(end.direction, centre_x - _x, centre_y - _y)
-            b_map = lambda _x, _y: Vector(end.direction, centre_x - _y, centre_y - _x)
-        case 4: # South to East
-            a_map = lambda _x, _y: Vector(end.direction, centre_x + _y, centre_y - _x)
-            b_map = lambda _x, _y: Vector(end.direction, centre_x + _x, centre_y - _y)
+    
+    # 1. Initialize Midpoint Variables
+    x = radius
+    y = 0
+    err = 1 - x
+    
+    # Direction is determined by the target 'end' vector's direction
+    target_dir = end.direction
 
     while x >= y:
-        a = a_map(x, y)
-        b = b_map(x, y)
+        # 2. Map coordinates based on Quadrant
+        # We need to map (x,y) from the unit circle to our world coordinates
+        coords = []
+        if quadrant == "TOP_LEFT":    # Start (-R, 0) -> End (0, R)
+            coords = [(centre_x - x, centre_y + y), (centre_x - y, centre_y + x)]
+        elif quadrant == "TOP_RIGHT":  # Start (R, 0) -> End (0, R)
+            coords = [(centre_x + x, centre_y + y), (centre_x + y, centre_y + x)]
+        elif quadrant == "BOTTOM_LEFT": # Start (-R, 0) -> End (0, -R)
+            coords = [(centre_x - x, centre_y - y), (centre_x - y, centre_y - x)]
+        elif quadrant == "BOTTOM_RIGHT": # Start (R, 0) -> End (0, -R)
+            coords = [(centre_x + x, centre_y - y), (centre_x + y, centre_y - x)]
 
-        # Immediate collision check: if any part of the arc is blocked, the turn is invalid
-        if not world.contains(a) or not world.contains(b):
+        # 3. Create Vectors and Check Safety
+        # a is the point closer to the axis, b is closer to the 45-degree diagonal
+        v_a = Vector(target_dir, coords[0][0], coords[0][1])
+        v_b = Vector(target_dir, coords[1][0], coords[1][1])
+
+        # We must check if the robot's body fits at these points
+        if not world.is_safe(v_a) or not world.is_safe(v_b):
             return None
 
-        path_start.append(a)
-        path_end.append(b)
+        path_start.append(v_a)
+        path_end.append(v_b)
 
+        # 4. Standard Midpoint Error Update
         y += 1
-        err += 1 + 2 * y
-        if 2 * (err - x) + 1 > 0:
+        if err < 0:
+            err += 2 * y + 1
+        else:
             x -= 1
-            err += 1 - 2 * x
+            err += 2 * (y - x) + 1
 
-    # IMPORTANT: The algorithm produces path_end in reverse order relative to the start.
-    # We reverse path_end so that the points flow logically from Start -> Middle -> End.
+    # 5. Reverse path_end to maintain sequence and join
     path_end.reverse()
-    
-    # Combine the two halves of the arc
     full_path = path_start + path_end
     
-    # Ensure the final target vector is included and valid
-    if world.contains(end):
-        full_path.append(end)
-    else:
-        return None
-
     return full_path
-

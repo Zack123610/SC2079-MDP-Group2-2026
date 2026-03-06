@@ -4,6 +4,7 @@ from abc import ABC
 from dataclasses import dataclass
 
 import numpy as np
+import math
 
 from pathfinding.world.primitives import Direction, Point, Vector
 
@@ -110,6 +111,36 @@ class World:
         return (0 <= min_x < self.size and 0 <= max_x < self.size and
                 0 <= min_y < self.size and 0 <= max_y < self.size)
 
+    
+    def is_safe(self, pos: Vector) -> bool:
+        '''
+        # 1. Calculate padding (3 cells for a 30cm robot on 5cm grid)
+        half_robot_cm = 15
+        padding = math.ceil(half_robot_cm / self.cell_size)
+
+        # 2. Get actual grid boundaries from the array itself
+        # shape[0] is height (y), shape[1] is width (x)
+        max_y, max_x = self.grid.shape
+
+        # 3. Boundary Check: Ensure the entire footprint is inside the map
+        if (pos.x - padding < 0 or pos.x + padding >= max_x or
+            pos.y - padding < 0 or pos.y + padding >= max_y):
+            return False
+
+        # 4. Footprint Check: Slice the pre-annotated grid
+        # We use int() to ensure indices are valid for slicing
+        y_start, y_end = int(pos.y - padding), int(pos.y + padding + 1)
+        x_start, x_end = int(pos.x - padding), int(pos.x + padding + 1)
+        
+        footprint = self.grid[y_start:y_end, x_start:x_end]
+        
+        # If the slice is empty (shouldn't happen with our boundary check) 
+        # or if any cell is False (blocked), return False.
+        if footprint.size == 0 or not np.all(footprint):
+            return False
+        '''
+        return True
+        
     @property
     def cell_size(self) -> int:
         return self.__actual_size // self.size

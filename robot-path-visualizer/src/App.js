@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const GRID_SIZE = 40;
-const CELL_SIZE = 40; // pixels
+const GRID_SIZE = 100;
+const CELL_SIZE = 10; // pixels
 
-const cell_size_cm = 5; // Each cell represents 5cm
+const cell_size_cm = 2; // Each cell represents 2cm
 
 const GridVisualization = () => {
   // State
   const [obstacles, setObstacles] = useState([]);
   const [allSegments, setAllSegments] = useState([]);
   const [robot, setRobot] = useState({
-    direction: 'EAST',
+    direction: 'NORTH',
     south_west: { x: 0, y: 0 },
     north_east: { x: 30 / cell_size_cm - 1, y: 30 / cell_size_cm - 1 }
   });
@@ -41,8 +41,8 @@ const GridVisualization = () => {
     return {
       direction: point.direction,
       center: { x: point.x, y: point.y },
-      south_west: { x: point.x - 1, y: point.y - 1 },
-      north_east: { x: point.x + 1, y: point.y + 1 }
+      south_west: { x: point.x - 10 / cell_size_cm, y: point.y - 10 / cell_size_cm },
+      north_east: { x: point.x + 10 / cell_size_cm, y: point.y + 10 / cell_size_cm }
     };
   };
 
@@ -192,7 +192,7 @@ const GridVisualization = () => {
       id: newId,
       direction: direction,
       south_west: { x, y },
-      north_east: { x: x + 1, y: y + 1 }
+      north_east: { x: x + 10 / cell_size_cm, y: y + 10 / cell_size_cm }
     };
     
     setObstacles([...obstacles, newObstacle]);
