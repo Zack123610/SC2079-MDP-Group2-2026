@@ -6,7 +6,7 @@ stm32_C/*
 runs/*
 
 # Algo Service
-algo_service/*
+# algo_service/*
 **/__pycache__/
 
 # RPi
