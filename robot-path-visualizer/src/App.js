@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const GRID_SIZE = 40;
-const CELL_SIZE = 20; // pixels
-
-const cell_size_cm = 5; // Each cell represents 5cm
+const GRID_SIZE = 20;
+const CELL_SIZE = 40; // pixels
 
 const GridVisualization = () => {
   // State
@@ -12,7 +10,7 @@ const GridVisualization = () => {
   const [robot, setRobot] = useState({
     direction: 'NORTH',
     south_west: { x: 0, y: 0 },
-    north_east: { x: 30 / cell_size_cm - 1, y: 30 / cell_size_cm - 1 }
+    north_east: { x: 2, y: 2 }
   });
   const [pathData, setPathData] = useState(null);
   const [animation, setAnimation] = useState({
@@ -30,7 +28,7 @@ const GridVisualization = () => {
   const pathPoints = pathData?.path || [];
 
   // Start zone (40x40cm = 4x4 cells)
-  const startZone = { x1: 0, y1: 0, x2: 40 / cell_size_cm - 1, y2: 40 / cell_size_cm - 1 };
+  const startZone = { x1: 0, y1: 0, x2: 3, y2: 3 };
 
   // Calculate robot center position from path point
   const getRobotPosition = (step) => {
@@ -41,8 +39,8 @@ const GridVisualization = () => {
     return {
       direction: point.direction,
       center: { x: point.x, y: point.y },
-      south_west: { x: point.x - 10 / cell_size_cm, y: point.y - 10 / cell_size_cm },
-      north_east: { x: point.x + 10 / cell_size_cm, y: point.y + 10 / cell_size_cm }
+      south_west: { x: point.x - 1, y: point.y - 1 },
+      north_east: { x: point.x + 1, y: point.y + 1 }
     };
   };
 
@@ -192,7 +190,7 @@ const GridVisualization = () => {
       id: newId,
       direction: direction,
       south_west: { x, y },
-      north_east: { x: x + 10 / cell_size_cm - 1, y: y + 10 / cell_size_cm - 1}
+      north_east: { x, y }
     };
     
     setObstacles([...obstacles, newObstacle]);
@@ -203,12 +201,16 @@ const GridVisualization = () => {
     
     try {
       const requestBody = {
-        robot: robot,
+        robot: {
+          direction: "NORTH",
+          south_west: { x: 0, y: 0 },
+          north_east: { x: 30, y: 30 }
+        },
         obstacles: obstacles.map(obs => ({
           image_id: obs.id,
           direction: obs.direction,
-          south_west: obs.south_west,
-          north_east: obs.north_east
+          south_west: { x: obs.south_west.x * 10, y: obs.south_west.y * 10 },
+          north_east: { x: (obs.north_east.x + 1) * 10, y: (obs.north_east.y + 1) * 10 }
         })),
         verbose: true
       };
@@ -221,13 +223,85 @@ const GridVisualization = () => {
 
       const data = await response.json();
       if (data.segments && data.segments.length > 0) {
-        const combinedPath = data.segments.flatMap(seg => seg.path);
-        const combinedSegment = {
-          ...data.segments[0],
-          path: combinedPath,
-          instructions: data.segments.flatMap(seg => seg.instructions)
+        // Flatten all instructions
+        const combinedInstructions = data.segments.flatMap(seg => seg.instructions);
+
+        // Generate path points from instructions
+        const generatePathPoints = (robotStart, segmentInstructions) => {
+          const points = [];
+          let pos = { ...robotStart.south_west }; // bottom-left corner
+          let dir = robotStart.direction;
+
+          const moveMap = {
+            NORTH: { x: 0, y: 1 },
+            SOUTH: { x: 0, y: -1 },
+            EAST: { x: 1, y: 0 },
+            WEST: { x: -1, y: 0 }
+          };
+
+          const roundToGrid = val => Math.round(val);
+
+          segmentInstructions.forEach(inst => {
+            if (typeof inst === 'string') {
+              // Turn instructions
+              let dx = 0, dy = 0;
+              if (inst.includes('FORWARD_LEFT')) {
+                switch(dir) {
+                  case 'NORTH': dir = 'WEST'; dx = -4; dy = 1; break;
+                  case 'SOUTH': dir = 'EAST'; dx = 4; dy = -1; break;
+                  case 'EAST': dir = 'NORTH'; dy = 4; dx = 1; break;
+                  case 'WEST': dir = 'SOUTH'; dy = -4; dx = -1; break;
+                }
+              } else if (inst.includes('FORWARD_RIGHT')) {
+                switch(dir) {
+                  case 'NORTH': dir = 'EAST'; dx = 5; dy = 1; break;
+                  case 'SOUTH': dir = 'WEST'; dx = -5; dy = -1; break;
+                  case 'EAST': dir = 'SOUTH'; dy = -5; dx = 1; break;
+                  case 'WEST': dir = 'NORTH'; dy = 5; dx = -1; break;
+                }
+              } else if (inst.includes('BACKWARD_LEFT')) {
+                switch(dir) {
+                  case 'NORTH': dir = 'EAST'; dx = -3; dy = -2; break;
+                  case 'SOUTH': dir = 'WEST'; dx = 3; dy = 2; break;
+                  case 'EAST': dir = 'SOUTH'; dy = 3; dx = -2; break;
+                  case 'WEST': dir = 'NORTH'; dy = -3; dx = 2; break;
+                }
+              } else if (inst.includes('BACKWARD_RIGHT')) {
+                switch(dir) {
+                  case 'NORTH': dir = 'WEST'; dx = 3; dy = -2; break;
+                  case 'SOUTH': dir = 'EAST'; dx = -3; dy = 2; break;
+                  case 'EAST': dir = 'NORTH'; dy = -3; dx = -2; break;
+                  case 'WEST': dir = 'SOUTH'; dy = 3; dx = 2; break;
+                }
+              }
+
+              pos = { x: roundToGrid(pos.x + dx), y: roundToGrid(pos.y + dy) };
+              points.push({ ...pos, direction: dir });
+            } else if (inst.move) {
+              // Forward/Backward moves
+              const vec = moveMap[dir];
+              const steps = Math.round(inst.amount / 10); // 10cm per cell
+              for (let s = 0; s < steps; s++) {
+                pos = {
+                  x: roundToGrid(pos.x + (inst.move === 'FORWARD' ? vec.x : -vec.x)),
+                  y: roundToGrid(pos.y + (inst.move === 'FORWARD' ? vec.y : -vec.y))
+                };
+                points.push({ ...pos, direction: dir });
+              }
+            }
+          });
+
+          return points;
         };
-        setPathData(combinedSegment);
+
+        const path = generatePathPoints(robot, combinedInstructions);
+
+        // Store path inside pathData to fit existing animation code
+        setPathData({
+          ...data.segments[0], // keep first segment metadata
+          path: path,
+          instructions: combinedInstructions
+        });
 
         setAllSegments(data.segments);
       }
@@ -249,20 +323,6 @@ const GridVisualization = () => {
         <div style={{ width: '300px' }}>
           <h3>Controls</h3>
           
-          <div style={{ marginBottom: '15px' }}>
-            <label>Robot Direction:</label>
-            <select 
-              value={robot.direction} 
-              onChange={(e) => setRobot(prev => ({ ...prev, direction: e.target.value }))}
-              style={{ padding: '5px', width: '100%', marginTop: '5px' }}
-            >
-              <option value="NORTH">North</option>
-              <option value="SOUTH">South</option>
-              <option value="EAST">East</option>
-              <option value="WEST">West</option>
-            </select>
-          </div>
-
           <div style={{ marginBottom: '15px' }}>
             <label>Obstacle Direction:</label>
             <select 
