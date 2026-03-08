@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const GRID_SIZE = 100;
-const CELL_SIZE = 10; // pixels
+const GRID_SIZE = 40;
+const CELL_SIZE = 20; // pixels
 
-const cell_size_cm = 2; // Each cell represents 2cm
+const cell_size_cm = 5; // Each cell represents 5cm
 
 const GridVisualization = () => {
   // State
@@ -192,7 +192,7 @@ const GridVisualization = () => {
       id: newId,
       direction: direction,
       south_west: { x, y },
-      north_east: { x: x + 10 / cell_size_cm, y: y + 10 / cell_size_cm }
+      north_east: { x: x + 10 / cell_size_cm - 1, y: y + 10 / cell_size_cm - 1}
     };
     
     setObstacles([...obstacles, newObstacle]);

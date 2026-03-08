@@ -139,7 +139,7 @@ class World:
         if footprint.size == 0 or not np.all(footprint):
             return False
         '''
-        return True
+        return self.contains(pos)
         
     @property
     def cell_size(self) -> int:
