@@ -1,0 +1,149 @@
+.arena-wrap {
+  margin-bottom: 1rem;
+}
+
+.arena-grid {
+  display: inline-flex;
+  flex-direction: column;
+  border: 2px solid #3f3f46;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #27272a;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.arena-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.arena-cell {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #3f3f46;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.arena-cell.robot {
+  background: #3b82f6;
+  border-color: #2563eb;
+}
+
+.arena-cell.obstacle {
+  background: #ef4444;
+  border-color: #dc2626;
+}
+
+.arena-cell.trail {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+/* Robot direction arrow (center of 3×3) */
+.robot-direction {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.95);
+  pointer-events: none;
+}
+
+.robot-direction-NORTH::before,
+.robot-direction-SOUTH::before,
+.robot-direction-EAST::before,
+.robot-direction-WEST::before {
+  display: block;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.robot-direction-NORTH::before { content: '▲'; }
+.robot-direction-SOUTH::before { content: '▼'; }
+.robot-direction-EAST::before { content: '▶'; }
+.robot-direction-WEST::before { content: '◀'; }
+
+/* Obstacle face indicator: small triangle on the side where image is */
+.obstacle-face {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  pointer-events: none;
+}
+
+/* Face = side of obstacle where image is. We draw a small arrow pointing outward. */
+.obstacle-face-NORTH {
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0 4px 5px 4px;
+  border-color: transparent transparent #1c1917 transparent;
+}
+
+.obstacle-face-SOUTH {
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 5px 4px 0 4px;
+  border-color: #1c1917 transparent transparent transparent;
+}
+
+.obstacle-face-EAST {
+  right: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-width: 4px 0 4px 5px;
+  border-color: transparent transparent transparent #1c1917;
+}
+
+.obstacle-face-WEST {
+  left: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-width: 4px 5px 4px 0;
+  border-color: transparent #1c1917 transparent transparent;
+}
+
+.arena-legend {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #a1a1aa;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.legend-robot {
+  width: 12px;
+  height: 12px;
+  background: #3b82f6;
+  border-radius: 2px;
+  border: 1px solid #2563eb;
+}
+
+.legend-obstacle {
+  width: 12px;
+  height: 12px;
+  background: #ef4444;
+  border-radius: 2px;
+  border: 1px solid #dc2626;
+}
+
+.legend-trail {
+  width: 12px;
+  height: 12px;
+  background: rgba(59, 130, 246, 0.4);
+  border-radius: 2px;
+  border: 1px solid rgba(59, 130, 246, 0.5);
+}
