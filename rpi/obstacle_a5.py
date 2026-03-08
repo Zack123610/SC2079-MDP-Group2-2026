@@ -48,10 +48,31 @@ CMD_ROTATE   = "8000"   # rotate 90° and search next face
 MAX_ROTATES  = 3        # max "8000" commands (3 rotations = 4 faces total)
 WINDOW_SIZE  = 10       # rolling detection window
 CONFIDENCE_THRESHOLD = 8  # need 8/10 agreeing detections to be "certain"
-VALID_CLS_RANGE = range(0, 31)  # cls_id 0–30 are valid images
+VALID_CLS_RANGE = range(10, 42)  # image IDs 10–41 are valid
 
 STM_RECV_TIMEOUT = 30.0  # seconds to wait for STM response
 DETECTION_WAIT   = 3.0   # seconds to wait for detections on each face
+
+
+# ---------------------------------------------------------------------------
+# Image ID extraction
+# ---------------------------------------------------------------------------
+
+
+def extract_image_id(cls_name: Optional[str]) -> Optional[int]:
+    """
+    Extract the numeric image ID from a class name in ``"Name-id-XX"`` format.
+
+    Example: ``"One-id-11"`` → ``11``
+
+    Returns None if the name doesn't match the expected pattern.
+    """
+    if not cls_name or "-id-" not in cls_name:
+        return None
+    try:
+        return int(cls_name.rsplit("-id-", 1)[1])
+    except (ValueError, IndexError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +125,7 @@ class DetectionTracker:
 
             best_name = max(counter, key=lambda k: len(counter[k]))
             best_dets = counter[best_name]
-            best_id = best_dets[-1].get("cls_id")
+            best_id = extract_image_id(best_name)
 
             return (best_name, best_id, len(best_dets), len(self._window))
 
@@ -167,13 +188,20 @@ def print_window(tracker: DetectionTracker) -> None:
           f"count={count}/{total} [{bar}]")
 
 
-def is_valid_image(cls_name: Optional[str], cls_id: Optional[int]) -> bool:
-    """True if the detection is a real image (not 'Obstacle' / unknown)."""
-    if cls_name is None or cls_id is None:
+def is_valid_image(cls_name: Optional[str], image_id: Optional[int]) -> bool:
+    """
+    True if the detection is a valid target image.
+
+    Invalid when the name has no ``-id-`` suffix (e.g. plain ``"Obstacle"``),
+    or the extracted ID is outside the 0–30 range.
+    """
+    if cls_name is None or image_id is None:
         return False
-    if cls_name.lower() == "obstacle":
+    if "obstacle" in cls_name.lower():
         return False
-    if cls_id not in VALID_CLS_RANGE:
+    if "-id-" not in cls_name:
+        return False
+    if image_id not in VALID_CLS_RANGE:
         return False
     return True
 

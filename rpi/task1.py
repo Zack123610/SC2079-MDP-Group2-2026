@@ -213,7 +213,8 @@ def capture_image(tracker: DetectionTracker, obstacle_id: int) -> Optional[int]:
     """
     Clear the detection window, wait for fresh detections, then evaluate.
 
-    Returns the target ``cls_id`` if valid (not "Obstacle", id 0–30), else None.
+    The image ID is extracted from the class name (``"Name-id-XX"`` format).
+    Returns the numeric image ID if valid (0–30), else None.
     """
     tracker.clear()
 
@@ -221,20 +222,20 @@ def capture_image(tracker: DetectionTracker, obstacle_id: int) -> Optional[int]:
           f"collecting for {DETECTION_WAIT}s …")
     time.sleep(DETECTION_WAIT)
 
-    name, cls_id, count, total = tracker.evaluate()
+    name, image_id, count, total = tracker.evaluate()
 
     if total == 0:
         print(f"[TASK1] No detections for obstacle {obstacle_id}")
         return None
 
     bar = "#" * count + "." * (total - count)
-    print(f"[TASK1] Window ({total}): majority='{name}' id={cls_id} "
+    print(f"[TASK1] Window ({total}): majority='{name}' image_id={image_id} "
           f"count={count}/{total} [{bar}]")
 
-    if count >= CONFIDENCE_THRESHOLD and is_valid_image(name, cls_id):
+    if count >= CONFIDENCE_THRESHOLD and is_valid_image(name, image_id):
         print(f"[TASK1] *** IDENTIFIED: obstacle {obstacle_id} "
-              f"→ target {cls_id} ***")
-        return cls_id
+              f"→ target {image_id} ***")
+        return image_id
 
     print(f"[TASK1] Inconclusive for obstacle {obstacle_id}")
     return None
