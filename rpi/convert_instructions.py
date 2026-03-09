@@ -108,31 +108,74 @@ def build_stm_payload(stm_commands: list[str]) -> str:
 
 def convert_response(data: dict[str, Any]) -> None:
     """
-    Parse a full algo service response and print the converted commands.
+    Parse new algo response format and print STM / Android commands.
     """
-    segments = data.get("segments", [])
-    if not segments:
-        print("No segments found in response.")
+    result = data.get("data", {})
+    commands = result.get("commands", [])
+    if not commands:
+        print("No commands found in response.")
         return
 
     all_stm: list[str] = []
 
-    for seg in segments:
-        obstacle_id = seg.get("image_id", "?")
-        instructions = seg.get("instructions", [])
-        print(f"\n── Segment: obstacle {obstacle_id} "
-              f"({len(instructions)} instructions) ──")
-        print(f"  {'#':<4} {'Algo instruction':<30} {'STM':>6}  {'Android'}")
-        print(f"  {'─'*4} {'─'*30} {'─'*6}  {'─'*28}")
+    print("\n── Algo Commands ──")
+    print(f"  {'#':<4} {'Algo command':<20} {'STM':>6}  {'Android'}")
+    print(f"  {'─'*4} {'─'*20} {'─'*6}  {'─'*28}")
 
-        for i, instr in enumerate(instructions):
-            stm_cmd, android_cmd = instruction_to_commands(instr)
-            instr_str = json.dumps(instr) if isinstance(instr, dict) else str(instr)
-            stm_str = stm_cmd or "—"
-            android_str = android_cmd or "(CAPTURE → TARGET at runtime)"
-            print(f"  {i:<4} {instr_str:<30} {stm_str:>6}  {android_str}")
-            if stm_cmd:
-                all_stm.append(stm_cmd)
+    for i, cmd in enumerate(commands):
+
+        stm_cmd = None
+        android_cmd = None
+
+        # -------------------------
+        # Forward / Backward moves
+        # -------------------------
+        if cmd.startswith("FW"):
+            amount = int(cmd[2:])
+            stm_cmd = f"1{amount:03d}"
+            android_cmd = f"MOVE,{amount},FORWARD"
+
+        elif cmd.startswith("BW"):
+            amount = int(cmd[2:])
+            stm_cmd = f"2{amount:03d}"
+            android_cmd = f"MOVE,{amount},BACKWARD"
+
+        # -------------------------
+        # Turns
+        # -------------------------
+        elif cmd.startswith("FL"):
+            stm_cmd = "6000"
+            android_cmd = "TURN,FORWARD_LEFT"
+
+        elif cmd.startswith("FR"):
+            stm_cmd = "7000"
+            android_cmd = "TURN,FORWARD_RIGHT"
+
+        elif cmd.startswith("BL"):
+            stm_cmd = "8000"
+            android_cmd = "TURN,BACKWARD_LEFT"
+
+        elif cmd.startswith("BR"):
+            stm_cmd = "9000"
+            android_cmd = "TURN,BACKWARD_RIGHT"
+
+        # -------------------------
+        # SNAP command
+        # -------------------------
+        elif cmd.startswith("SNAP"):
+            stm_cmd = "5000"
+            android_cmd = f"CAPTURE_IMAGE,{cmd[4:]}"
+
+        else:
+            print(f"[CONVERT] Unknown command: {cmd}")
+
+        stm_str = stm_cmd or "—"
+        android_str = android_cmd or "—"
+
+        print(f"  {i:<4} {cmd:<20} {stm_str:>6}  {android_str}")
+
+        if stm_cmd:
+            all_stm.append(stm_cmd)
 
     if all_stm:
         payload = build_stm_payload(all_stm)

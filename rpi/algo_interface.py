@@ -143,10 +143,31 @@ class AlgoInterface:
             print("[ALGO] Not started – call start() first")
             return None
 
+        robot_cfg = robot or self._robot
+
+        def _direction_to_int(self, direction: str) -> int:
+            mapping = {
+                "NORTH": 0,
+                "EAST": 2,
+                "SOUTH": 4,
+                "WEST": 6
+            }
+            return mapping.get(direction, 0)
+            
         payload = {
-            "robot": robot or self._robot,
-            "obstacles": obstacles,
-            "verbose": self._verbose,
+            "robot_x": robot_cfg["south_west"]["x"],
+            "robot_y": robot_cfg["south_west"]["y"],
+            "robot_dir": self._direction_to_int(robot_cfg["direction"]),
+            "retrying": "False",
+            "obstacles": [
+                {
+                    "x": ob["south_west"]["x"],
+                    "y": ob["south_west"]["y"],
+                    "d": self._direction_to_int(ob["direction"]),
+                    "obstacleNumber": ob["image_id"]
+                }
+                for ob in obstacles
+            ]
         }
 
         url = f"{self._base_url}/pathfinding"
@@ -174,13 +195,17 @@ class AlgoInterface:
             print("[ALGO] Invalid JSON in response")
             return None
 
-        segments = data.get("segments", [])
-        print(f"[ALGO] Received {len(segments)} segment(s)")
-        for seg in segments:
-            n_instr = len(seg.get("instructions", []))
-            print(f"  -> obstacle {seg.get('image_id')}: cost={seg.get('cost')}, {n_instr} instruction(s)")
+        result = data.get("data", {})
 
-        return data
+        commands = result.get("commands", [])
+        distance = result.get("distance", 0)
+        path = result.get("path", [])
+
+        print(f"[ALGO] Distance: {distance}")
+        print(f"[ALGO] Commands: {len(commands)}")
+        print(f"[ALGO] Path nodes: {len(path)}")
+
+        return result
 
     # ------------------------------------------------------------------
     # Context manager
