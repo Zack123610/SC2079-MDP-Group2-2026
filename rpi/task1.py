@@ -208,7 +208,12 @@ def build_command_lists(
         android_commands.append(android_cmd)
         if stm_cmd == "5000":
             snap_m = _SNAP_RE.match(cmd_str)
-            capture_map[idx] = int(snap_m.group(1)) if snap_m else 0
+            if snap_m:
+                capture_map[idx] = int(snap_m.group(1))
+            else:
+                print(f"[TASK1] WARNING: could not extract obstacle number "
+                      f"from '{cmd_str}'")
+                capture_map[idx] = -1
 
     return stm_commands, android_commands, capture_map
 
@@ -320,8 +325,20 @@ def execute_all(
             print("[TASK1] STM32 unresponsive – aborting")
             return False
 
+        # STM echoes "RESM" back after we send it — ignore the echo
+        if response == "RESM":
+            print("[TASK1] Ignoring RESM echo from STM32")
+            continue
+
         if response == "HALT":
-            obstacle_id = capture_map.get(idx, 0)
+            obstacle_id = capture_map.get(idx, -1)
+            if obstacle_id == -1:
+                print(f"[TASK1] WARNING: HALT at idx {idx} has no matching "
+                      f"obstacle in capture_map – skipping capture")
+                stm.send("RESM", add_newline=False)
+                idx += 1
+                continue
+
             print(f"[TASK1] HALT received – running image capture "
                   f"for obstacle {obstacle_id}")
 
