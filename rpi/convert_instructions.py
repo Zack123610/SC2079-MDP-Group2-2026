@@ -100,7 +100,7 @@ def build_stm_payload(stm_commands: list[str]) -> str:
 
 def convert_response(data: dict[str, Any]) -> None:
     """
-    Parse a full algo service response and print the converted commands.
+    Parse new algo response format and print STM / Android commands.
     """
     commands = data.get("data", {}).get("commands", [])
     if not commands:

@@ -11,7 +11,6 @@ marshmallow_enum="*"
 numpy = "*"
 pydantic = "*"
 flask-openapi3 = {extras = ["swagger"], version = "*"}
-python-tsp = "*"
 
 [dev-packages]
 

@@ -133,6 +133,17 @@ class AlgoInterface:
             print("[ALGO] Not started – call start() first")
             return None
 
+        robot_cfg = robot or self._robot
+
+        def _direction_to_int(self, direction: str) -> int:
+            mapping = {
+                "NORTH": 0,
+                "EAST": 2,
+                "SOUTH": 4,
+                "WEST": 6
+            }
+            return mapping.get(direction, 0)
+            
         payload = {
             "obstacles": obstacles,
             "retrying": retrying,
@@ -174,7 +185,15 @@ class AlgoInterface:
         distance = data.get("data", {}).get("distance", 0)
         print(f"[ALGO] Received {len(commands)} command(s), distance={distance}")
 
-        return data
+        commands = result.get("commands", [])
+        distance = result.get("distance", 0)
+        path = result.get("path", [])
+
+        print(f"[ALGO] Distance: {distance}")
+        print(f"[ALGO] Commands: {len(commands)}")
+        print(f"[ALGO] Path nodes: {len(path)}")
+
+        return result
 
     # ------------------------------------------------------------------
     # Context manager

@@ -31,28 +31,24 @@ def turn(world: World, start: Vector, instruction: TurnInstruction) -> list[Vect
     match (start.direction, instruction):
         # --- NORTH FACING ---
         case (Direction.NORTH, TurnInstruction.FORWARD_LEFT):
-            # 5cm forward, then 40cm arc to the left
             path_lead = get_lead_points(start, lead, Direction.NORTH)
             pivot = path_lead[-1] if path_lead else start
             curve_res = __curve(world, radius, Vector(Direction.WEST, pivot.x - radius, pivot.y + radius), 
                                 pivot.x - radius, pivot.y, quadrant="TOP_RIGHT")
 
         case (Direction.NORTH, TurnInstruction.FORWARD_RIGHT):
-            # 8cm forward, then 48cm arc to the right
             path_lead = get_lead_points(start, lead, Direction.NORTH)
             pivot = path_lead[-1] if path_lead else start
             curve_res = __curve(world, radius, Vector(Direction.EAST, pivot.x + radius, pivot.y + radius), 
                                 pivot.x + radius, pivot.y, quadrant="TOP_LEFT")
 
         case (Direction.NORTH, TurnInstruction.BACKWARD_LEFT):
-            # 22cm backward, then 27cm arc to the left (resulting in East)
             path_lead = get_lead_points(start, lead, Direction.SOUTH)
             pivot = path_lead[-1] if path_lead else start
             curve_res = __curve(world, radius, Vector(Direction.EAST, pivot.x - radius, pivot.y - radius), 
                                 pivot.x - radius, pivot.y, quadrant="BOTTOM_RIGHT")
 
         case (Direction.NORTH, TurnInstruction.BACKWARD_RIGHT):
-            # 22cm backward, then 29cm arc to the right (resulting in West)
             path_lead = get_lead_points(start, lead, Direction.SOUTH)
             pivot = path_lead[-1] if path_lead else start
             curve_res = __curve(world, radius, Vector(Direction.WEST, pivot.x + radius, pivot.y - radius), 
@@ -62,90 +58,79 @@ def turn(world: World, start: Vector, instruction: TurnInstruction) -> list[Vect
         case (Direction.EAST, TurnInstruction.FORWARD_LEFT):
             path_lead = get_lead_points(start, lead, Direction.EAST)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius, 
-                                Vector(Direction.NORTH, pivot.x + radius, pivot.y + radius), 
+            curve_res = __curve(world, radius, Vector(Direction.NORTH, pivot.x + radius, pivot.y + radius), 
                                 pivot.x, pivot.y + radius, quadrant="BOTTOM_LEFT")
 
         case (Direction.EAST, TurnInstruction.FORWARD_RIGHT):
             path_lead = get_lead_points(start, lead, Direction.EAST)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius, 
-                                Vector(Direction.SOUTH, pivot.x + radius, pivot.y - radius), 
+            curve_res = __curve(world, radius, Vector(Direction.SOUTH, pivot.x + radius, pivot.y - radius), 
                                 pivot.x, pivot.y - radius, quadrant="TOP_LEFT")
 
         case (Direction.EAST, TurnInstruction.BACKWARD_LEFT):
             path_lead = get_lead_points(start, lead, Direction.WEST)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius, 
-                                Vector(Direction.SOUTH, pivot.x - radius, pivot.y - radius), 
+            curve_res = __curve(world, radius, Vector(Direction.SOUTH, pivot.x - radius, pivot.y - radius), 
                                 pivot.x, pivot.y - radius, quadrant="TOP_RIGHT")
 
         case (Direction.EAST, TurnInstruction.BACKWARD_RIGHT):
             path_lead = get_lead_points(start, lead, Direction.WEST)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius, 
-                                Vector(Direction.NORTH, pivot.x - radius, pivot.y + radius), 
+            curve_res = __curve(world, radius, Vector(Direction.NORTH, pivot.x - radius, pivot.y + radius), 
                                 pivot.x, pivot.y + radius, quadrant="BOTTOM_RIGHT")
-        
-                # --- SOUTH FACING ---
+
+        # --- SOUTH FACING ---
         case (Direction.SOUTH, TurnInstruction.FORWARD_LEFT):
             path_lead = get_lead_points(start, lead, Direction.SOUTH)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius,
-                                Vector(Direction.EAST, pivot.x + radius, pivot.y - radius),
-                                pivot.x + radius, pivot.y, quadrant="TOP_LEFT")
+            curve_res = __curve(world, radius, Vector(Direction.EAST, pivot.x + radius, pivot.y - radius),
+                                pivot.x + radius, pivot.y, quadrant="BOTTOM_LEFT")
 
         case (Direction.SOUTH, TurnInstruction.FORWARD_RIGHT):
+            # FIXED: Now uses BOTTOM_RIGHT to ensure the Y-coordinate decreases (Forward for South)
             path_lead = get_lead_points(start, lead, Direction.SOUTH)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius,
-                                Vector(Direction.WEST, pivot.x - radius, pivot.y - radius),
-                                pivot.x - radius, pivot.y, quadrant="TOP_RIGHT")
+            curve_res = __curve(world, radius, Vector(Direction.WEST, pivot.x - radius, pivot.y - radius),
+                                pivot.x - radius, pivot.y, quadrant="BOTTOM_RIGHT")
 
         case (Direction.SOUTH, TurnInstruction.BACKWARD_LEFT):
             path_lead = get_lead_points(start, lead, Direction.NORTH)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius,
-                                Vector(Direction.WEST, pivot.x - radius, pivot.y + radius),
-                                pivot.x - radius, pivot.y, quadrant="BOTTOM_RIGHT")
+            curve_res = __curve(world, radius, Vector(Direction.WEST, pivot.x - radius, pivot.y + radius),
+                                pivot.x - radius, pivot.y, quadrant="TOP_RIGHT")
 
         case (Direction.SOUTH, TurnInstruction.BACKWARD_RIGHT):
             path_lead = get_lead_points(start, lead, Direction.NORTH)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius,
-                                Vector(Direction.EAST, pivot.x + radius, pivot.y + radius),
-                                pivot.x + radius, pivot.y, quadrant="BOTTOM_LEFT")
+            curve_res = __curve(world, radius, Vector(Direction.EAST, pivot.x + radius, pivot.y + radius),
+                                pivot.x + radius, pivot.y, quadrant="TOP_LEFT")
 
         # --- WEST FACING ---
         case (Direction.WEST, TurnInstruction.FORWARD_LEFT):
             path_lead = get_lead_points(start, lead, Direction.WEST)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius,
-                                Vector(Direction.SOUTH, pivot.x - radius, pivot.y - radius),
+            curve_res = __curve(world, radius, Vector(Direction.SOUTH, pivot.x - radius, pivot.y - radius),
                                 pivot.x, pivot.y - radius, quadrant="TOP_RIGHT")
 
         case (Direction.WEST, TurnInstruction.FORWARD_RIGHT):
             path_lead = get_lead_points(start, lead, Direction.WEST)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius,
-                                Vector(Direction.NORTH, pivot.x - radius, pivot.y + radius),
+            curve_res = __curve(world, radius, Vector(Direction.NORTH, pivot.x - radius, pivot.y + radius),
                                 pivot.x, pivot.y + radius, quadrant="BOTTOM_RIGHT")
 
         case (Direction.WEST, TurnInstruction.BACKWARD_LEFT):
             path_lead = get_lead_points(start, lead, Direction.EAST)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius,
-                                Vector(Direction.NORTH, pivot.x + radius, pivot.y + radius),
+            curve_res = __curve(world, radius, Vector(Direction.NORTH, pivot.x + radius, pivot.y + radius),
                                 pivot.x, pivot.y + radius, quadrant="BOTTOM_LEFT")
 
         case (Direction.WEST, TurnInstruction.BACKWARD_RIGHT):
             path_lead = get_lead_points(start, lead, Direction.EAST)
             pivot = path_lead[-1] if path_lead else start
-            curve_res = __curve(world, radius,
-                                Vector(Direction.SOUTH, pivot.x + radius, pivot.y - radius),
+            curve_res = __curve(world, radius, Vector(Direction.SOUTH, pivot.x + radius, pivot.y - radius),
                                 pivot.x, pivot.y - radius, quadrant="TOP_LEFT")
 
-
+                                
     if curve_res is None:
         return None
     
@@ -474,3 +459,125 @@ def __curve(world, radius, end, centre_x, centre_y, quadrant) -> list[Vector] | 
     full_path = path_start + path_end
     
     return full_path
+
+
+    """
+    old code
+    match (start.direction, instruction):
+        # --- NORTH FACING ---
+        case (Direction.NORTH, TurnInstruction.FORWARD_LEFT):
+            # 5cm forward, then 40cm arc to the left
+            path_lead = get_lead_points(start, lead, Direction.NORTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius, Vector(Direction.WEST, pivot.x - radius, pivot.y + radius), 
+                                pivot.x - radius, pivot.y, quadrant="TOP_RIGHT")
+
+        case (Direction.NORTH, TurnInstruction.FORWARD_RIGHT):
+            # 8cm forward, then 48cm arc to the right
+            path_lead = get_lead_points(start, lead, Direction.NORTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius, Vector(Direction.EAST, pivot.x + radius, pivot.y + radius), 
+                                pivot.x + radius, pivot.y, quadrant="TOP_LEFT")
+
+        case (Direction.NORTH, TurnInstruction.BACKWARD_LEFT):
+            # 22cm backward, then 27cm arc to the left (resulting in East)
+            path_lead = get_lead_points(start, lead, Direction.SOUTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius, Vector(Direction.EAST, pivot.x - radius, pivot.y - radius), 
+                                pivot.x - radius, pivot.y, quadrant="BOTTOM_RIGHT")
+
+        case (Direction.NORTH, TurnInstruction.BACKWARD_RIGHT):
+            # 22cm backward, then 29cm arc to the right (resulting in West)
+            path_lead = get_lead_points(start, lead, Direction.SOUTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius, Vector(Direction.WEST, pivot.x + radius, pivot.y - radius), 
+                                pivot.x + radius, pivot.y, quadrant="BOTTOM_LEFT")
+
+        # --- EAST FACING ---
+        case (Direction.EAST, TurnInstruction.FORWARD_LEFT):
+            path_lead = get_lead_points(start, lead, Direction.EAST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius, 
+                                Vector(Direction.NORTH, pivot.x + radius, pivot.y + radius), 
+                                pivot.x, pivot.y + radius, quadrant="BOTTOM_LEFT")
+
+        case (Direction.EAST, TurnInstruction.FORWARD_RIGHT):
+            path_lead = get_lead_points(start, lead, Direction.EAST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius, 
+                                Vector(Direction.SOUTH, pivot.x + radius, pivot.y - radius), 
+                                pivot.x, pivot.y - radius, quadrant="TOP_LEFT")
+
+        case (Direction.EAST, TurnInstruction.BACKWARD_LEFT):
+            path_lead = get_lead_points(start, lead, Direction.WEST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius, 
+                                Vector(Direction.SOUTH, pivot.x - radius, pivot.y - radius), 
+                                pivot.x, pivot.y - radius, quadrant="TOP_RIGHT")
+
+        case (Direction.EAST, TurnInstruction.BACKWARD_RIGHT):
+            path_lead = get_lead_points(start, lead, Direction.WEST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius, 
+                                Vector(Direction.NORTH, pivot.x - radius, pivot.y + radius), 
+                                pivot.x, pivot.y + radius, quadrant="BOTTOM_RIGHT")
+        
+                # --- SOUTH FACING ---
+        case (Direction.SOUTH, TurnInstruction.FORWARD_LEFT):
+            path_lead = get_lead_points(start, lead, Direction.SOUTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.EAST, pivot.x + radius, pivot.y - radius),
+                                pivot.x + radius, pivot.y, quadrant="TOP_LEFT")
+
+        case (Direction.SOUTH, TurnInstruction.FORWARD_RIGHT):
+            path_lead = get_lead_points(start, lead, Direction.SOUTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.WEST, pivot.x - radius, pivot.y - radius),
+                                pivot.x - radius, pivot.y, quadrant="TOP_RIGHT")
+
+        case (Direction.SOUTH, TurnInstruction.BACKWARD_LEFT):
+            path_lead = get_lead_points(start, lead, Direction.NORTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.WEST, pivot.x - radius, pivot.y + radius),
+                                pivot.x - radius, pivot.y, quadrant="BOTTOM_RIGHT")
+
+        case (Direction.SOUTH, TurnInstruction.BACKWARD_RIGHT):
+            path_lead = get_lead_points(start, lead, Direction.NORTH)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.EAST, pivot.x + radius, pivot.y + radius),
+                                pivot.x + radius, pivot.y, quadrant="BOTTOM_LEFT")
+
+        # --- WEST FACING ---
+        case (Direction.WEST, TurnInstruction.FORWARD_LEFT):
+            path_lead = get_lead_points(start, lead, Direction.WEST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.SOUTH, pivot.x - radius, pivot.y - radius),
+                                pivot.x, pivot.y - radius, quadrant="TOP_RIGHT")
+
+        case (Direction.WEST, TurnInstruction.FORWARD_RIGHT):
+            path_lead = get_lead_points(start, lead, Direction.WEST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.NORTH, pivot.x - radius, pivot.y + radius),
+                                pivot.x, pivot.y + radius, quadrant="BOTTOM_RIGHT")
+
+        case (Direction.WEST, TurnInstruction.BACKWARD_LEFT):
+            path_lead = get_lead_points(start, lead, Direction.EAST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.NORTH, pivot.x + radius, pivot.y + radius),
+                                pivot.x, pivot.y + radius, quadrant="BOTTOM_LEFT")
+
+        case (Direction.WEST, TurnInstruction.BACKWARD_RIGHT):
+            path_lead = get_lead_points(start, lead, Direction.EAST)
+            pivot = path_lead[-1] if path_lead else start
+            curve_res = __curve(world, radius,
+                                Vector(Direction.SOUTH, pivot.x + radius, pivot.y - radius),
+                                pivot.x, pivot.y - radius, quadrant="TOP_LEFT")
+
+"""
