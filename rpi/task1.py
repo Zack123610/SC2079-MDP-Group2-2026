@@ -278,7 +278,7 @@ def _build_stm_payload(stm_commands: list[str]) -> str:
     """
     body = "".join(stm_commands)
     checksum = sum(int(ch) for ch in body if ch.isdigit()) % 100
-    return f"<{body}>{checksum}"
+    return f"<{body}>{checksum:02d}"
 
 
 def execute_all(
@@ -468,7 +468,7 @@ def run(
             # 4) Stop the robot
             elapsed = time.time() - run_start
             print(f"\n[TASK1] Run finished ({elapsed:.1f}s) – sending STOP")
-            stm.send("<0000>0", add_newline=False)
+            stm.send("<0000>00", add_newline=False)
 
             # Reset for next run
             obstacles.clear()
