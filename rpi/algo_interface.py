@@ -4,17 +4,19 @@ Algorithm Service Interface Module
 Communicates with the pathfinding REST API running on the PC.
 
 Endpoint:
-    POST http://<PC_IP>:<port>/path
+    POST http://<PC_IP>:<port>/pathfinding/
 
 Request body:
     {
-        "obstacles": [
-            {"x": 9, "y": 9, "d": 0, "obstacleNumber": 1}
-        ],
-        "retrying": false,
         "robot_x": 1,
         "robot_y": 1,
-        "robot_dir": 0
+        "robot_dir": 0,
+        "retrying": false,
+        "obstacles": [
+            {"x": 0, "y": 15, "d": 2, "obstacleNumber": 1},
+            {"x": 17, "y": 19, "d": 4, "obstacleNumber": 2},
+            {"x": 12, "y": 13, "d": 0, "obstacleNumber": 3}
+        ]
     }
 
 Response:
@@ -133,26 +135,15 @@ class AlgoInterface:
             print("[ALGO] Not started – call start() first")
             return None
 
-        robot_cfg = robot or self._robot
-
-        def _direction_to_int(self, direction: str) -> int:
-            mapping = {
-                "NORTH": 0,
-                "EAST": 2,
-                "SOUTH": 4,
-                "WEST": 6
-            }
-            return mapping.get(direction, 0)
-            
         payload = {
-            "obstacles": obstacles,
-            "retrying": retrying,
             "robot_x": robot_x,
             "robot_y": robot_y,
             "robot_dir": robot_dir,
+            "retrying": retrying,
+            "obstacles": obstacles,
         }
 
-        url = f"{self._base_url}/path"
+        url = f"{self._base_url}/pathfinding/"
         print(f"[ALGO] POST {url} ({len(obstacles)} obstacle(s))")
 
         try:
@@ -185,15 +176,7 @@ class AlgoInterface:
         distance = data.get("data", {}).get("distance", 0)
         print(f"[ALGO] Received {len(commands)} command(s), distance={distance}")
 
-        commands = result.get("commands", [])
-        distance = result.get("distance", 0)
-        path = result.get("path", [])
-
-        print(f"[ALGO] Distance: {distance}")
-        print(f"[ALGO] Commands: {len(commands)}")
-        print(f"[ALGO] Path nodes: {len(path)}")
-
-        return result
+        return data
 
     # ------------------------------------------------------------------
     # Context manager
