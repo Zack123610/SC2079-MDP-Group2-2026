@@ -20,6 +20,8 @@ Android → RPi message examples:
     ROBOT,0,0,NORTH
     OBSTACLE,1,120,120,NORTH       (x_raw=120 → grid x=12)
     OBSTACLE,2,90,80,SOUTH
+    OBSTACLE,2,90,80,EAST          (upserts: updates obstacle 2 direction)
+    CLEAR                          (resets all obstacles + robot state)
     BEGIN
 
 Run on Raspberry Pi:
@@ -374,11 +376,12 @@ def run(
     print("=" * 60)
     print("Waiting for commands from Android …")
     print("  ROBOT,<x>,<y>,<direction>")
-    print("  OBSTACLE,<id>,<x>,<y>,<direction>")
+    print("  OBSTACLE,<id>,<x>,<y>,<direction>  (upserts by id)")
+    print("  CLEAR                               (reset all state)")
     print("  BEGIN\n")
 
     robot_dir: int = 0  # NORTH by default
-    obstacles: list[dict[str, Any]] = []
+    obstacles: dict[int, dict[str, Any]] = {}  # keyed by obstacleNumber
 
     while True:
         msg = bt.readline()
@@ -401,12 +404,21 @@ def run(
                 print(f"[TASK1] Bad ROBOT format: '{msg}'")
             continue
 
-        # ---- OBSTACLE registration ---------------------------------------
+        # ---- CLEAR state -------------------------------------------------
+        if token == "CLEAR":
+            obstacles.clear()
+            robot_dir = 0
+            print("[TASK1] State cleared (obstacles + robot direction)")
+            continue
+
+        # ---- OBSTACLE registration (upsert by obstacleNumber) ------------
         if token.startswith("OBSTACLE"):
             obs = parse_obstacle(msg)
             if obs:
-                obstacles.append(obs)
-                print(f"[TASK1] Obstacle {obs['obstacleNumber']} → "
+                obs_num = obs["obstacleNumber"]
+                action = "Updated" if obs_num in obstacles else "Added"
+                obstacles[obs_num] = obs
+                print(f"[TASK1] {action} obstacle {obs_num} → "
                       f"grid ({obs['x']},{obs['y']}) "
                       f"d={obs['d']}  [{len(obstacles)} total]")
             else:
@@ -419,12 +431,14 @@ def run(
                 print("[TASK1] No obstacles registered – ignoring BEGIN")
                 continue
 
-            print(f"\n[TASK1] ▶ BEGIN with {len(obstacles)} obstacle(s), "
+            obstacle_list = list(obstacles.values())
+
+            print(f"\n[TASK1] ▶ BEGIN with {len(obstacle_list)} obstacle(s), "
                   f"robot_dir={robot_dir}")
 
             # 1) Request path from algo service
             result = algo.request_path(
-                obstacles,
+                obstacle_list,
                 robot_dir=robot_dir,
             )
             if not result or not result.get("data"):
