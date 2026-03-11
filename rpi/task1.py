@@ -26,6 +26,8 @@ Android → RPi message examples:
 
 Run on Raspberry Pi:
     python task1.py --pc-host <PC_IP>
+    python task1.py --pc-host <PC_IP> --bt-mode serial   # use /dev/rfcomm0
+    python task1.py --pc-host <PC_IP> --bt-mode socket   # native AF_BLUETOOTH (default)
 """
 
 import argparse
@@ -33,10 +35,11 @@ import re
 import sys
 import threading
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from algo_interface import AlgoInterface
-from bluetooth_interface_socket import BluetoothInterface
+from bluetooth_interface import BluetoothInterface as BluetoothSerial
+from bluetooth_interface_socket import BluetoothInterface as BluetoothSocket
 from camera_interface import CameraInterface
 from obstacle_a5 import (
     CONFIDENCE_THRESHOLD,
@@ -48,6 +51,8 @@ from obstacle_a5 import (
 )
 from pc_interface import PCInterface
 from stm32_interface import STM32Interface
+
+BluetoothIface = Union[BluetoothSerial, BluetoothSocket]
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -283,7 +288,7 @@ def _build_stm_payload(stm_commands: list[str]) -> str:
 
 def execute_all(
     stm: STM32Interface,
-    bt: BluetoothInterface,
+    bt: BluetoothIface,
     tracker: DetectionTracker,
     stm_commands: list[str],
     android_commands: list[Optional[str]],
@@ -358,7 +363,7 @@ def execute_all(
 
 
 def run(
-    bt: BluetoothInterface,
+    bt: BluetoothIface,
     stm: STM32Interface,
     algo: AlgoInterface,
     tracker: DetectionTracker,
@@ -496,6 +501,9 @@ def main() -> None:
                         help="Camera stream ZMQ PUB port")
     parser.add_argument("--no-camera", action="store_true",
                         help="Skip camera (if pi_streamer already running)")
+    parser.add_argument("--bt-mode", choices=["socket", "serial"], default="serial",
+                        help="Bluetooth backend: 'socket' (native AF_BLUETOOTH, default) "
+                             "or 'serial' (/dev/rfcomm0 via pyserial)")
     args = parser.parse_args()
 
     # --- STM32 ----------------------------------------------------------------
@@ -529,7 +537,12 @@ def main() -> None:
     algo.start()
 
     # --- Bluetooth ------------------------------------------------------------
-    bt = BluetoothInterface()
+    if args.bt_mode == "socket":
+        print("[INIT] Using socket-based Bluetooth (AF_BLUETOOTH)")
+        bt = BluetoothSocket()
+    else:
+        print("[INIT] Using serial-based Bluetooth (/dev/rfcomm0)")
+        bt = BluetoothSerial()
     if not bt.start():
         print("[INIT] Bluetooth failed. Exiting.")
         _cleanup(stm, cam=cam, pc=pc, algo=algo)
@@ -563,7 +576,7 @@ def _cleanup(
     cam: Optional[CameraInterface] = None,
     pc: Optional[PCInterface] = None,
     algo: Optional[AlgoInterface] = None,
-    bt: Optional[BluetoothInterface] = None,
+    bt: Optional[BluetoothIface] = None,
 ) -> None:
     if bt:
         bt.close()

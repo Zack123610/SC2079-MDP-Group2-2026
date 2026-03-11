@@ -67,7 +67,9 @@ This exposes the Bluetooth link as `/dev/rfcomm0`, which `bluetooth_interface.py
 
 ```bash
 cd rpi
-python task1.py --pc-host <PC_IP>
+python task1.py --pc-host <PC_IP>                    # default: socket-based BT
+python task1.py --pc-host <PC_IP> --bt-mode serial   # /dev/rfcomm0 via pyserial
+python task1.py --pc-host <PC_IP> --bt-mode socket   # native AF_BLUETOOTH (default)
 ```
 
 `task1.py` connects all interfaces and runs the full autonomous flow:
