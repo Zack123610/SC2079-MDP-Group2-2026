@@ -67,7 +67,9 @@ This exposes the Bluetooth link as `/dev/rfcomm0`, which `bluetooth_interface.py
 
 ```bash
 cd rpi
-python task1.py --pc-host <PC_IP>
+python task1.py --pc-host <PC_IP>                    # default: socket-based BT
+python task1.py --pc-host <PC_IP> --bt-mode serial   # /dev/rfcomm0 via pyserial
+python task1.py --pc-host <PC_IP> --bt-mode socket   # native AF_BLUETOOTH (default)
 ```
 
 `task1.py` connects all interfaces and runs the full autonomous flow:
@@ -77,6 +79,8 @@ python task1.py --pc-host <PC_IP>
    ROBOT,0,0,NORTH
    OBSTACLE,1,120,120,NORTH
    OBSTACLE,2,90,80,SOUTH
+   OBSTACLE,2,90,80,EAST       ← updates obstacle 2 direction (upsert by id)
+   CLEAR                       ← resets all obstacles + robot state (optional)
    BEGIN
    ```
 2. Requests a pathfinding solution from the algo service on PC.
@@ -132,7 +136,8 @@ Android App  --[Bluetooth RFCOMM]-->  Raspberry Pi  --[USB Serial]-->  STM32
 | Message | Example | Description |
 |---------|---------|-------------|
 | Robot position | `ROBOT,0,0,NORTH` | Starting position and direction |
-| Obstacle info | `OBSTACLE,1,120,120,NORTH` | Obstacle 1 at grid (12,12) facing North |
+| Obstacle info | `OBSTACLE,1,120,120,NORTH` | Obstacle 1 at grid (12,12) facing North (upserts by id) |
+| Clear state | `CLEAR` | Reset all obstacles and robot direction |
 | Start execution | `BEGIN` | Trigger pathfinding and navigation |
 
 ### RPi → Android

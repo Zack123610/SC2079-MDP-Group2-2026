@@ -20,10 +20,14 @@ Android → RPi message examples:
     ROBOT,0,0,NORTH
     OBSTACLE,1,120,120,NORTH       (x_raw=120 → grid x=12)
     OBSTACLE,2,90,80,SOUTH
+    OBSTACLE,2,90,80,EAST          (upserts: updates obstacle 2 direction)
+    CLEAR                          (resets all obstacles + robot state)
     BEGIN
 
 Run on Raspberry Pi:
     python task1.py --pc-host <PC_IP>
+    python task1.py --pc-host <PC_IP> --bt-mode serial   # use /dev/rfcomm0
+    python task1.py --pc-host <PC_IP> --bt-mode socket   # native AF_BLUETOOTH (default)
 """
 
 import argparse
@@ -31,10 +35,11 @@ import re
 import sys
 import threading
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from algo_interface import AlgoInterface
-from bluetooth_interface_socket import BluetoothInterface
+from bluetooth_interface import BluetoothInterface as BluetoothSerial
+from bluetooth_interface_socket import BluetoothInterface as BluetoothSocket
 from camera_interface import CameraInterface
 from obstacle_a5 import (
     CONFIDENCE_THRESHOLD,
@@ -46,6 +51,8 @@ from obstacle_a5 import (
 )
 from pc_interface import PCInterface
 from stm32_interface import STM32Interface
+
+BluetoothIface = Union[BluetoothSerial, BluetoothSocket]
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -201,7 +208,12 @@ def build_command_lists(
         android_commands.append(android_cmd)
         if stm_cmd == "5000":
             snap_m = _SNAP_RE.match(cmd_str)
-            capture_map[idx] = int(snap_m.group(1)) if snap_m else 0
+            if snap_m:
+                capture_map[idx] = int(snap_m.group(1))
+            else:
+                print(f"[TASK1] WARNING: could not extract obstacle number "
+                      f"from '{cmd_str}'")
+                capture_map[idx] = -1
 
     return stm_commands, android_commands, capture_map
 
@@ -276,12 +288,12 @@ def _build_stm_payload(stm_commands: list[str]) -> str:
     """
     body = "".join(stm_commands)
     checksum = sum(int(ch) for ch in body if ch.isdigit()) % 100
-    return f"<{body}>{checksum}"
+    return f"<{body}>{checksum:02d}"
 
 
 def execute_all(
     stm: STM32Interface,
-    bt: BluetoothInterface,
+    bt: BluetoothIface,
     tracker: DetectionTracker,
     stm_commands: list[str],
     android_commands: list[Optional[str]],
@@ -313,8 +325,20 @@ def execute_all(
             print("[TASK1] STM32 unresponsive – aborting")
             return False
 
+        # STM echoes "RESM" back after we send it — ignore the echo
+        if response == "RESM":
+            print("[TASK1] Ignoring RESM echo from STM32")
+            continue
+
         if response == "HALT":
-            obstacle_id = capture_map.get(idx, 0)
+            obstacle_id = capture_map.get(idx, -1)
+            if obstacle_id == -1:
+                print(f"[TASK1] WARNING: HALT at idx {idx} has no matching "
+                      f"obstacle in capture_map – skipping capture")
+                stm.send("RESM", add_newline=False)
+                idx += 1
+                continue
+
             print(f"[TASK1] HALT received – running image capture "
                   f"for obstacle {obstacle_id}")
 
@@ -356,7 +380,7 @@ def execute_all(
 
 
 def run(
-    bt: BluetoothInterface,
+    bt: BluetoothIface,
     stm: STM32Interface,
     algo: AlgoInterface,
     tracker: DetectionTracker,
@@ -374,11 +398,12 @@ def run(
     print("=" * 60)
     print("Waiting for commands from Android …")
     print("  ROBOT,<x>,<y>,<direction>")
-    print("  OBSTACLE,<id>,<x>,<y>,<direction>")
+    print("  OBSTACLE,<id>,<x>,<y>,<direction>  (upserts by id)")
+    print("  CLEAR                               (reset all state)")
     print("  BEGIN\n")
 
     robot_dir: int = 0  # NORTH by default
-    obstacles: list[dict[str, Any]] = []
+    obstacles: dict[int, dict[str, Any]] = {}  # keyed by obstacleNumber
 
     while True:
         msg = bt.readline()
@@ -401,12 +426,21 @@ def run(
                 print(f"[TASK1] Bad ROBOT format: '{msg}'")
             continue
 
-        # ---- OBSTACLE registration ---------------------------------------
+        # ---- CLEAR state -------------------------------------------------
+        if token == "CLEAR":
+            obstacles.clear()
+            robot_dir = 0
+            print("[TASK1] State cleared (obstacles + robot direction)")
+            continue
+
+        # ---- OBSTACLE registration (upsert by obstacleNumber) ------------
         if token.startswith("OBSTACLE"):
             obs = parse_obstacle(msg)
             if obs:
-                obstacles.append(obs)
-                print(f"[TASK1] Obstacle {obs['obstacleNumber']} → "
+                obs_num = obs["obstacleNumber"]
+                action = "Updated" if obs_num in obstacles else "Added"
+                obstacles[obs_num] = obs
+                print(f"[TASK1] {action} obstacle {obs_num} → "
                       f"grid ({obs['x']},{obs['y']}) "
                       f"d={obs['d']}  [{len(obstacles)} total]")
             else:
@@ -419,12 +453,14 @@ def run(
                 print("[TASK1] No obstacles registered – ignoring BEGIN")
                 continue
 
-            print(f"\n[TASK1] ▶ BEGIN with {len(obstacles)} obstacle(s), "
+            obstacle_list = list(obstacles.values())
+
+            print(f"\n[TASK1] ▶ BEGIN with {len(obstacle_list)} obstacle(s), "
                   f"robot_dir={robot_dir}")
 
             # 1) Request path from algo service
             result = algo.request_path(
-                obstacles,
+                obstacle_list,
                 robot_dir=robot_dir,
             )
             if not result or not result.get("data"):
@@ -454,7 +490,7 @@ def run(
             # 4) Stop the robot
             elapsed = time.time() - run_start
             print(f"\n[TASK1] Run finished ({elapsed:.1f}s) – sending STOP")
-            stm.send("<0000>0", add_newline=False)
+            stm.send("<0000>00", add_newline=False)
 
             # Reset for next run
             obstacles.clear()
@@ -482,6 +518,9 @@ def main() -> None:
                         help="Camera stream ZMQ PUB port")
     parser.add_argument("--no-camera", action="store_true",
                         help="Skip camera (if pi_streamer already running)")
+    parser.add_argument("--bt-mode", choices=["socket", "serial"], default="serial",
+                        help="Bluetooth backend: 'socket' (native AF_BLUETOOTH, default) "
+                             "or 'serial' (/dev/rfcomm0 via pyserial)")
     args = parser.parse_args()
 
     # --- STM32 ----------------------------------------------------------------
@@ -515,7 +554,12 @@ def main() -> None:
     algo.start()
 
     # --- Bluetooth ------------------------------------------------------------
-    bt = BluetoothInterface()
+    if args.bt_mode == "socket":
+        print("[INIT] Using socket-based Bluetooth (AF_BLUETOOTH)")
+        bt = BluetoothSocket()
+    else:
+        print("[INIT] Using serial-based Bluetooth (/dev/rfcomm0)")
+        bt = BluetoothSerial()
     if not bt.start():
         print("[INIT] Bluetooth failed. Exiting.")
         _cleanup(stm, cam=cam, pc=pc, algo=algo)
@@ -549,7 +593,7 @@ def _cleanup(
     cam: Optional[CameraInterface] = None,
     pc: Optional[PCInterface] = None,
     algo: Optional[AlgoInterface] = None,
-    bt: Optional[BluetoothInterface] = None,
+    bt: Optional[BluetoothIface] = None,
 ) -> None:
     if bt:
         bt.close()

@@ -90,7 +90,7 @@ def build_stm_payload(stm_commands: list[str]) -> str:
     """
     body = "".join(stm_commands)
     checksum = sum(int(ch) for ch in body if ch.isdigit()) % 100
-    return f"<{body}>{checksum}"
+    return f"<{body}>{checksum:02d}"
 
 
 # ---------------------------------------------------------------------------
