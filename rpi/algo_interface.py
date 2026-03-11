@@ -1,65 +1,69 @@
 """
 Algorithm Service Interface Module
 
-Communicates with the pathfinding REST API running on the PC (default port 5001).
-
-The algo service accepts a robot configuration (constant across runs) and a
-list of obstacles (varies per run), then returns an ordered list of path
-segments with movement instructions for each obstacle.
+Communicates with the pathfinding REST API running on the PC.
 
 Endpoint:
-    POST http://<PC_IP>:5001/pathfinding
+    POST http://<PC_IP>:<port>/path
+
+Request body:
+    {
+        "obstacles": [
+            {"x": 9, "y": 9, "d": 0, "obstacleNumber": 1}
+        ],
+        "retrying": false,
+        "robot_x": 1,
+        "robot_y": 1,
+        "robot_dir": 0
+    }
+
+Response:
+    {
+        "data": {
+            "commands": ["FR00", "FW10", "SNAP1_C", ..., "FN"],
+            "distance": 46.0,
+            "path": [...]
+        },
+        "error": null
+    }
 
 Usage:
     algo = AlgoInterface(host="<PC_IP>")
 
     obstacles = [
-        {
-            "image_id": 1,
-            "direction": "WEST",
-            "south_west": {"x": 10, "y": 10},
-            "north_east": {"x": 11, "y": 11},
-        },
+        {"x": 12, "y": 12, "d": 0, "obstacleNumber": 1},
     ]
 
-    result = algo.request_path(obstacles)
+    result = algo.request_path(obstacles, robot_dir=0)
     if result:
-        for segment in result["segments"]:
-            print(segment["image_id"], segment["instructions"])
+        for cmd in result["data"]["commands"]:
+            print(cmd)
 
 Context manager is supported:
     with AlgoInterface(host="<PC_IP>") as algo:
         ...
 
 Standalone test:
-    python algo_interface.py --host <PC_IP> --port 5001
+    python algo_interface.py --host <PC_IP> --port 15001
 """
 
 import argparse
 import json
 import sys
-import time
 from typing import Any, Optional
 
 import requests
-
-
-DEFAULT_ROBOT = {
-    "direction": "NORTH",
-    "south_west": {"x": 0, "y": 0},
-    "north_east": {"x": 2, "y": 2},
-}
 
 
 class AlgoInterface:
     """
     HTTP client for the pathfinding algorithm service on the PC.
 
-    Sends obstacle data to the algo service and receives back path segments
-    with movement instructions for the robot to follow.
+    Sends obstacle data to the algo service and receives back a flat list
+    of movement commands for the robot to follow.
     """
 
-    DEFAULT_PORT = 5001
+    DEFAULT_PORT = 15001
     DEFAULT_TIMEOUT = 30.0
 
     def __init__(
@@ -67,22 +71,10 @@ class AlgoInterface:
         host: str = "127.0.0.1",
         port: int = DEFAULT_PORT,
         timeout: float = DEFAULT_TIMEOUT,
-        robot: Optional[dict[str, Any]] = None,
-        verbose: bool = True,
     ) -> None:
-        """
-        Args:
-            host:    IP address of the PC running the algo service.
-            port:    Port the algo service listens on.
-            timeout: HTTP request timeout in seconds.
-            robot:   Robot configuration dict. Uses DEFAULT_ROBOT if not given.
-            verbose: Whether to request verbose path info from the service.
-        """
         self._host = host
         self._port = port
         self._timeout = timeout
-        self._robot = robot or DEFAULT_ROBOT
-        self._verbose = verbose
         self._base_url = f"http://{self._host}:{self._port}"
         self._session: Optional[requests.Session] = None
 
@@ -91,12 +83,6 @@ class AlgoInterface:
     # ------------------------------------------------------------------
 
     def start(self) -> bool:
-        """
-        Open a persistent HTTP session to the algo service.
-
-        Returns True once the session is ready. The actual TCP connection
-        is established lazily on the first request.
-        """
         if self._session is not None:
             print("[ALGO] Session already open")
             return True
@@ -107,7 +93,6 @@ class AlgoInterface:
         return True
 
     def stop(self) -> None:
-        """Close the HTTP session."""
         if self._session:
             self._session.close()
             self._session = None
@@ -124,32 +109,39 @@ class AlgoInterface:
     def request_path(
         self,
         obstacles: list[dict[str, Any]],
-        robot: Optional[dict[str, Any]] = None,
+        robot_x: int = 1,
+        robot_y: int = 1,
+        robot_dir: int = 0,
+        retrying: bool = False,
     ) -> Optional[dict[str, Any]]:
         """
-        Request a pathfinding solution for the given obstacles.
+        Request a pathfinding solution.
 
         Args:
-            obstacles: List of obstacle dicts, each containing:
-                       ``image_id``, ``direction``, ``south_west``, ``north_east``.
-            robot:     Optional robot config override for this request.
-                       Falls back to the instance default if not provided.
+            obstacles: List of obstacle dicts, each with
+                       ``x``, ``y``, ``d``, ``obstacleNumber``.
+            robot_x:   Robot starting x (default 1).
+            robot_y:   Robot starting y (default 1).
+            robot_dir: Robot starting direction (0=N, 2=E, 4=S, 6=W).
+            retrying:  Whether this is a retry attempt.
 
         Returns:
-            Parsed JSON response with ``segments`` on success, or None on failure.
-            Each segment contains ``image_id``, ``cost``, ``instructions``, and ``path``.
+            Parsed JSON response on success, or None on failure.
+            Access commands via ``result["data"]["commands"]``.
         """
         if not self._session:
             print("[ALGO] Not started – call start() first")
             return None
 
         payload = {
-            "robot": robot or self._robot,
             "obstacles": obstacles,
-            "verbose": self._verbose,
+            "retrying": retrying,
+            "robot_x": robot_x,
+            "robot_y": robot_y,
+            "robot_dir": robot_dir,
         }
 
-        url = f"{self._base_url}/pathfinding"
+        url = f"{self._base_url}/path"
         print(f"[ALGO] POST {url} ({len(obstacles)} obstacle(s))")
 
         try:
@@ -174,11 +166,13 @@ class AlgoInterface:
             print("[ALGO] Invalid JSON in response")
             return None
 
-        segments = data.get("segments", [])
-        print(f"[ALGO] Received {len(segments)} segment(s)")
-        for seg in segments:
-            n_instr = len(seg.get("instructions", []))
-            print(f"  -> obstacle {seg.get('image_id')}: cost={seg.get('cost')}, {n_instr} instruction(s)")
+        if data.get("error"):
+            print(f"[ALGO] Service error: {data['error']}")
+            return None
+
+        commands = data.get("data", {}).get("commands", [])
+        distance = data.get("data", {}).get("distance", 0)
+        print(f"[ALGO] Received {len(commands)} command(s), distance={distance}")
 
         return data
 
@@ -206,12 +200,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     sample_obstacles = [
-        {
-            "image_id": 1,
-            "direction": "WEST",
-            "south_west": {"x": 10, "y": 10},
-            "north_east": {"x": 11, "y": 11},
-        },
+        {"x": 9, "y": 9, "d": 0, "obstacleNumber": 1},
     ]
 
     with AlgoInterface(host=args.host, port=args.port) as algo:

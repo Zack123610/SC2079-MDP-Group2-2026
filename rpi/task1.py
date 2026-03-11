@@ -3,17 +3,17 @@ Task 1 – Obstacle Navigation and Image Recognition
 
 Execution model (experimental – batch send):
   1. Android sends ROBOT position, OBSTACLE list, then BEGIN.
-  2. RPi parses everything and POSTs to the algo service on PC:5001.
-  3. RPi flattens ALL instructions from ALL segments into one list,
-     translating each into a 4-char STM command (CAPTURE_IMAGE → "5000")
-     and a parallel Android UI command.
-  4. The full STM command string is concatenated and sent to STM in one
-     shot.  STM slices every 4 bytes and executes sequentially.
-  5. RPi enters a response loop:
+  2. RPi parses everything and POSTs to the algo service on PC
+     (POST /path with new flat request format).
+  3. Algo returns a flat list of commands (FW50, FR00, SNAP4_C, …).
+     RPi translates each into a 4-char STM command and a parallel
+     Android UI command, then batch-sends all STM commands in one
+     framed payload.
+  4. RPi enters a response loop:
        - "DONE" → send the indexed Android command to update the UI.
-       - "HALT" (from "5000") → run DetectionTracker, send TARGET to
-         Android, then send "RESM" to STM to resume.
-  6. After all instructions (or 6-minute timeout), send "0000" to STM
+       - "HALT" (from "5000" / SNAP) → run DetectionTracker, send
+         TARGET to Android, then send "RESM" to STM to resume.
+  5. After all instructions (or 6-minute timeout), send "0000" to STM
      and loop back for the next batch.
 
 Android → RPi message examples:
@@ -27,13 +27,14 @@ Run on Raspberry Pi:
 """
 
 import argparse
+import re
 import sys
 import threading
 import time
 from typing import Any, Optional
 
 from algo_interface import AlgoInterface
-from bluetooth_interface import BluetoothInterface
+from bluetooth_interface_socket import BluetoothInterface
 from camera_interface import CameraInterface
 from obstacle_a5 import (
     CONFIDENCE_THRESHOLD,
@@ -53,30 +54,12 @@ from stm32_interface import STM32Interface
 STM_RECV_TIMEOUT = 30.0   # max seconds to wait for one STM response
 RUN_TIMEOUT      = 360.0  # 6-minute cap per run
 
-# Algo string instructions → STM32 4-char commands
-STM_STRING_CMD: dict[str, str] = {
-    "LEFT":           "3000",
-    "RIGHT":          "4000",
-    "FORWARD_LEFT":   "6000",
-    "FORWARD_RIGHT":  "7000",
-    "BACKWARD_LEFT":  "8000",
-    "BACKWARD_RIGHT": "9000",
-}
-
-# Algo string instructions → Android UI commands
-ANDROID_TURN_CMD: dict[str, str] = {
-    "LEFT":           "STAT_TURN,LEFT",
-    "RIGHT":          "STAT_TURN,RIGHT",
-    "FORWARD_LEFT":   "TURN,FORWARD_LEFT",
-    "FORWARD_RIGHT":  "TURN,FORWARD_RIGHT",
-    "BACKWARD_LEFT":  "TURN,BACKWARD_LEFT",
-    "BACKWARD_RIGHT": "TURN,BACKWARD_RIGHT",
-}
-
-# Direction-code prefix for dict-based move instructions
-MOVE_DIR_CODE: dict[str, str] = {
-    "FORWARD":  "1",
-    "BACKWARD": "2",
+# Android direction string → algo service direction number
+DIRECTION_MAP: dict[str, int] = {
+    "NORTH": 0,
+    "EAST":  2,
+    "SOUTH": 4,
+    "WEST":  6,
 }
 
 # ---------------------------------------------------------------------------
@@ -84,122 +67,141 @@ MOVE_DIR_CODE: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def parse_robot(msg: str) -> Optional[dict[str, Any]]:
+def parse_robot(msg: str) -> Optional[int]:
     """
     Parse ``ROBOT,<x>,<y>,<direction>`` from Android.
 
-    Returns an algo-service-compatible robot dict.
+    Returns the robot direction as an algo-service int (0/2/4/6),
+    or None on parse error.
     """
     parts = [p.strip() for p in msg.split(",")]
     if len(parts) != 4 or parts[0].upper() != "ROBOT":
         return None
-    try:
-        direction = parts[3].upper()
-    except IndexError:
-        return None
-    return {
-        "direction": direction,
-        "south_west": {"x": 0, "y": 0},
-        "north_east": {"x": 1, "y": 1},
-    }
+    direction = DIRECTION_MAP.get(parts[3].upper())
+    if direction is None:
+        print(f"[TASK1] Unknown direction: {parts[3]}")
+    return direction
 
 
 def parse_obstacle(msg: str) -> Optional[dict[str, Any]]:
     """
-    Parse ``OBSTACLE,<image_id>,<x_raw>,<y_raw>,<direction>`` from Android.
+    Parse ``OBSTACLE,<id>,<x_raw>,<y_raw>,<direction>`` from Android.
 
     Raw coordinates are divided by 10 to convert to grid units
-    (e.g. 120 → 12).
+    (e.g. 120 → 12).  Returns an algo-service-compatible obstacle dict.
     """
     parts = [p.strip() for p in msg.split(",")]
     if len(parts) != 5 or parts[0].upper() != "OBSTACLE":
         return None
     try:
-        image_id  = int(parts[1])
-        x         = int(parts[2]) // 10
-        y         = int(parts[3]) // 10
-        direction = parts[4].upper()
+        obstacle_number = int(parts[1])
+        x = int(parts[2]) // 10
+        y = int(parts[3]) // 10
+        d = DIRECTION_MAP.get(parts[4].upper())
+        if d is None:
+            print(f"[TASK1] Unknown direction: {parts[4]}")
+            return None
     except (ValueError, IndexError):
         return None
     return {
-        "image_id": image_id,
-        "direction": direction,
-        "south_west": {"x": x, "y": y},
-        "north_east": {"x": x + 1, "y": y + 1},
+        "x": x,
+        "y": y,
+        "d": d,
+        "obstacleNumber": obstacle_number,
     }
 
 
 # ---------------------------------------------------------------------------
-# Instruction → (STM command, Android command)
+# Algo instruction → (STM command, Android command)
 # ---------------------------------------------------------------------------
+
+# Regex to split a movement command into prefix + numeric suffix
+_CMD_RE = re.compile(r"^([A-Z]+)(\d+)$", re.IGNORECASE)
+# SNAP commands: SNAP4_C, SNAP5_R, or legacy SNAP1
+_SNAP_RE = re.compile(r"^SNAP(\d+)(?:_([A-Z]))?$", re.IGNORECASE)
 
 
 def instruction_to_commands(
-    instruction: Any,
+    instruction: str,
 ) -> tuple[Optional[str], Optional[str]]:
     """
-    Convert one algo instruction into ``(stm_cmd, android_cmd)``.
+    Convert one algo instruction string into ``(stm_cmd, android_cmd)``.
 
-    CAPTURE_IMAGE → ``("5000", None)`` — the Android message is
-    determined at runtime after image recognition.
+    Algo format   →  STM       →  Android
+    FW50          →  1050      →  MOVE,50,FORWARD
+    BW30          →  2030      →  MOVE,30,BACKWARD
+    FL00          →  6000      →  TURN,FORWARD_LEFT
+    FR00          →  7000      →  TURN,FORWARD_RIGHT
+    BL00          →  8000      →  TURN,BACKWARD_LEFT
+    BR00          →  9000      →  TURN,BACKWARD_RIGHT
+    SNAP4_C       →  5000      →  (None – determined at runtime)
+    FN / FIN      →  (None)    →  (None – end marker, skipped)
     """
-    if isinstance(instruction, dict):
-        move   = instruction.get("move", "").upper()
-        amount = instruction.get("amount", 0)
-        code   = MOVE_DIR_CODE.get(move)
-        if code is None:
-            print(f"[TASK1] Unknown move type: {move}")
-            return (None, None)
-        stm_cmd     = f"{code}{amount:03d}"
-        android_cmd = f"MOVE,{amount},{move}"
-        return (stm_cmd, android_cmd)
+    upper = instruction.upper()
 
-    if isinstance(instruction, str):
-        upper = instruction.upper()
-        if upper == "CAPTURE_IMAGE":
-            return ("5000", None)
-        stm_cmd     = STM_STRING_CMD.get(upper)
-        android_cmd = ANDROID_TURN_CMD.get(upper)
-        if stm_cmd is None:
-            print(f"[TASK1] Unknown string instruction: {instruction}")
-        return (stm_cmd, android_cmd)
+    if upper in ("FIN", "FN"):
+        return (None, None)
 
+    # SNAP commands (e.g. SNAP4_C, SNAP5_R, SNAP1)
+    if _SNAP_RE.match(upper):
+        return ("5000", None)
+
+    m = _CMD_RE.match(upper)
+    if not m:
+        print(f"[TASK1] Cannot parse algo instruction: {instruction}")
+        return (None, None)
+
+    prefix = m.group(1)
+    num    = int(m.group(2))
+
+    if prefix == "FW":
+        return (f"1{num:03d}", f"MOVE,{num},FORWARD")
+    if prefix == "BW":
+        return (f"2{num:03d}", f"MOVE,{num},BACKWARD")
+    if prefix == "FL":
+        return ("6000", "TURN,FORWARD_LEFT")
+    if prefix == "FR":
+        return ("7000", "TURN,FORWARD_RIGHT")
+    if prefix == "BL":
+        return ("8000", "TURN,BACKWARD_LEFT")
+    if prefix == "BR":
+        return ("9000", "TURN,BACKWARD_RIGHT")
+
+    print(f"[TASK1] Unknown algo instruction: {instruction}")
     return (None, None)
 
 
 # ---------------------------------------------------------------------------
-# Build flat command lists from algo segments
+# Build flat command lists from algo commands
 # ---------------------------------------------------------------------------
 
 
 def build_command_lists(
-    segments: list[dict[str, Any]],
+    commands: list[str],
 ) -> tuple[list[str], list[Optional[str]], dict[int, int]]:
     """
-    Flatten all algo segments into parallel command lists.
+    Convert the flat algo command list into parallel STM / Android lists.
 
     Returns:
-        stm_commands:    List of 4-char STM commands.
+        stm_commands:     List of 4-char STM commands.
         android_commands: Parallel list of Android UI strings (None for
-                         CAPTURE_IMAGE entries — filled at runtime).
-        capture_map:     ``{ index: obstacle_id }`` for every CAPTURE_IMAGE.
+                          SNAP entries — filled at runtime).
+        capture_map:      ``{ index: obstacle_number }`` for every SNAP.
     """
     stm_commands: list[str] = []
     android_commands: list[Optional[str]] = []
     capture_map: dict[int, int] = {}
 
-    for segment in segments:
-        obstacle_id = segment.get("image_id", 0)
-        for instruction in segment.get("instructions", []):
-            stm_cmd, android_cmd = instruction_to_commands(instruction)
-            if stm_cmd is None:
-                print(f"[TASK1] Skipping unrecognised instruction: {instruction}")
-                continue
-            idx = len(stm_commands)
-            stm_commands.append(stm_cmd)
-            android_commands.append(android_cmd)
-            if stm_cmd == "5000":
-                capture_map[idx] = obstacle_id
+    for cmd_str in commands:
+        stm_cmd, android_cmd = instruction_to_commands(cmd_str)
+        if stm_cmd is None:
+            continue
+        idx = len(stm_commands)
+        stm_commands.append(stm_cmd)
+        android_commands.append(android_cmd)
+        if stm_cmd == "5000":
+            snap_m = _SNAP_RE.match(cmd_str)
+            capture_map[idx] = int(snap_m.group(1)) if snap_m else 0
 
     return stm_commands, android_commands, capture_map
 
@@ -214,7 +216,7 @@ def capture_image(tracker: DetectionTracker, obstacle_id: int) -> Optional[int]:
     Clear the detection window, wait for fresh detections, then evaluate.
 
     The image ID is extracted from the class name (``"Name-id-XX"`` format).
-    Returns the numeric image ID if valid (0–30), else None.
+    Returns the numeric image ID if valid (10–41), else None.
     """
     tracker.clear()
 
@@ -271,12 +273,6 @@ def _build_stm_payload(stm_commands: list[str]) -> str:
     Format:  ``<cmd1cmd2...cmdN>CC``
 
     where CC is a checksum: ``(sum of all digit chars in the commands) % 100``.
-
-    Example:
-        commands = ["6030", "2020", "6033"]
-        body     = "603020206033"
-        checksum = (6+0+3+0+2+0+2+0+6+0+3+3) % 100 = 25
-        payload  = "<603020206033>25"
     """
     body = "".join(stm_commands)
     checksum = sum(int(ch) for ch in body if ch.isdigit()) % 100
@@ -298,7 +294,6 @@ def execute_all(
 
     Returns True if all commands completed, False on timeout / error.
     """
-    # --- Batch send ---
     stm_payload = _build_stm_payload(stm_commands)
     print(f"[TASK1] → STM32 (batch): '{stm_payload}' "
           f"({len(stm_commands)} commands)")
@@ -306,10 +301,8 @@ def execute_all(
         print("[TASK1] Failed to send batch to STM32")
         return False
 
-    # --- Response loop ---
     idx = 0
     while idx < len(stm_commands):
-        # 6-minute timeout check
         elapsed = time.time() - run_start
         if elapsed > RUN_TIMEOUT:
             print(f"[TASK1] 6-minute timeout reached ({elapsed:.0f}s)")
@@ -321,7 +314,6 @@ def execute_all(
             return False
 
         if response == "HALT":
-            # --- CAPTURE_IMAGE: STM is paused, waiting for RESM ---
             obstacle_id = capture_map.get(idx, 0)
             print(f"[TASK1] HALT received – running image capture "
                   f"for obstacle {obstacle_id}")
@@ -334,13 +326,11 @@ def execute_all(
             else:
                 print(f"[TASK1] Obstacle {obstacle_id}: identification failed")
 
-            # Resume STM
             print("[TASK1] → STM32: 'RESM'")
             stm.send("RESM", add_newline=False)
             idx += 1
 
         elif response == "DONE":
-            # --- Normal instruction completed ---
             android_cmd = android_commands[idx]
             if android_cmd:
                 print(f"[TASK1] → Android: {android_cmd}")
@@ -358,46 +348,6 @@ def execute_all(
 
     print(f"[TASK1] All {len(stm_commands)} commands executed")
     return True
-
-
-# ---------------------------------------------------------------------------
-# Manual STM command mode
-# ---------------------------------------------------------------------------
-
-
-# def _manual_stm_mode(stm: STM32Interface) -> None:
-#     """
-#     Interactive prompt that lets the operator send raw commands to STM32.
-
-#     Type a command (e.g. ``1030``, ``3000``) and press Enter.
-#     Type ``quit`` or ``q`` to exit back to the Android listener loop.
-#     """
-#     print("\n" + "-" * 50)
-#     print("  Manual STM command mode")
-#     print("  Type a command to send to STM32 (e.g. 1030)")
-#     print("  Type 'quit' or 'q' to return to Android listener")
-#     print("-" * 50)
-
-#     while True:
-#         try:
-#             cmd = input("[STM manual] > ").strip()
-#         except (EOFError, KeyboardInterrupt):
-#             print()
-#             break
-
-#         if cmd.lower() in ("quit", "exit", "q", ""):
-#             break
-
-#         print(f"[STM manual] → STM32: '{cmd}'")
-#         stm.send(cmd, add_newline=False)
-
-#         response = wait_for_stm(stm)
-#         if response:
-#             print(f"[STM manual] ← STM32: '{response}'")
-#         else:
-#             print("[STM manual] No response (timeout)")
-
-#     print("[STM manual] Exiting manual mode\n")
 
 
 # ---------------------------------------------------------------------------
@@ -427,11 +377,7 @@ def run(
     print("  OBSTACLE,<id>,<x>,<y>,<direction>")
     print("  BEGIN\n")
 
-    robot_cfg: dict[str, Any] = {
-        "direction": "NORTH",
-        "south_west": {"x": 0, "y": 0},
-        "north_east": {"x": 1, "y": 1},
-    }
+    robot_dir: int = 0  # NORTH by default
     obstacles: list[dict[str, Any]] = []
 
     while True:
@@ -448,9 +394,9 @@ def run(
         # ---- ROBOT position / direction ----------------------------------
         if token.startswith("ROBOT"):
             parsed = parse_robot(msg)
-            if parsed:
-                robot_cfg = parsed
-                print(f"[TASK1] Robot direction set to {robot_cfg['direction']}")
+            if parsed is not None:
+                robot_dir = parsed
+                print(f"[TASK1] Robot direction set to {robot_dir}")
             else:
                 print(f"[TASK1] Bad ROBOT format: '{msg}'")
             continue
@@ -460,9 +406,9 @@ def run(
             obs = parse_obstacle(msg)
             if obs:
                 obstacles.append(obs)
-                print(f"[TASK1] Obstacle {obs['image_id']} → "
-                      f"grid ({obs['south_west']['x']},{obs['south_west']['y']}) "
-                      f"facing {obs['direction']}  [{len(obstacles)} total]")
+                print(f"[TASK1] Obstacle {obs['obstacleNumber']} → "
+                      f"grid ({obs['x']},{obs['y']}) "
+                      f"d={obs['d']}  [{len(obstacles)} total]")
             else:
                 print(f"[TASK1] Bad OBSTACLE format: '{msg}'")
             continue
@@ -474,20 +420,27 @@ def run(
                 continue
 
             print(f"\n[TASK1] ▶ BEGIN with {len(obstacles)} obstacle(s), "
-                  f"robot facing {robot_cfg['direction']}")
+                  f"robot_dir={robot_dir}")
 
             # 1) Request path from algo service
-            result = algo.request_path(obstacles, robot=robot_cfg)
-            if not result or not result.get("segments"):
-                print("[TASK1] Algo returned no path")
+            result = algo.request_path(
+                obstacles,
+                robot_dir=robot_dir,
+            )
+            if not result or not result.get("data"):
+                print("[TASK1] Algo returned no data")
                 continue
 
-            segments = result["segments"]
-            print(f"[TASK1] Algo returned {len(segments)} segment(s)")
+            algo_commands = result["data"].get("commands", [])
+            if not algo_commands:
+                print("[TASK1] Algo returned empty commands")
+                continue
+
+            print(f"[TASK1] Algo commands: {algo_commands}")
 
             # 2) Build flat command lists
-            stm_cmds, android_cmds, capture_map = build_command_lists(segments)
-            print(f"[TASK1] Built {len(stm_cmds)} commands "
+            stm_cmds, android_cmds, capture_map = build_command_lists(algo_commands)
+            print(f"[TASK1] Built {len(stm_cmds)} STM commands "
                   f"({len(capture_map)} captures)\n")
 
             # 3) Execute
@@ -501,18 +454,11 @@ def run(
             # 4) Stop the robot
             elapsed = time.time() - run_start
             print(f"\n[TASK1] Run finished ({elapsed:.1f}s) – sending STOP")
-            stm.send("<0000>", add_newline=False)
+            stm.send("<0000>0", add_newline=False)
 
             # Reset for next run
             obstacles.clear()
-            robot_cfg = {
-                "direction": "NORTH",
-                "south_west": {"x": 0, "y": 0},
-                "north_east": {"x": 1, "y": 1},
-            }
-
-            # Manual STM command mode until Android sends new obstacles
-            # _manual_stm_mode(stm)
+            robot_dir = 0
             print("[TASK1] Waiting for next set of obstacles …\n")
             continue
 
@@ -536,8 +482,6 @@ def main() -> None:
                         help="Camera stream ZMQ PUB port")
     parser.add_argument("--no-camera", action="store_true",
                         help="Skip camera (if pi_streamer already running)")
-    parser.add_argument("--pybluez", action="store_true",
-                        help="Use legacy PyBluez RFCOMM server for Bluetooth")
     args = parser.parse_args()
 
     # --- STM32 ----------------------------------------------------------------
@@ -571,7 +515,7 @@ def main() -> None:
     algo.start()
 
     # --- Bluetooth ------------------------------------------------------------
-    bt = BluetoothInterface(use_pybluez_server=args.pybluez)
+    bt = BluetoothInterface()
     if not bt.start():
         print("[INIT] Bluetooth failed. Exiting.")
         _cleanup(stm, cam=cam, pc=pc, algo=algo)

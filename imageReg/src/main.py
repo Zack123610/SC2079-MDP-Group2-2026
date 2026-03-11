@@ -4,6 +4,7 @@ from ultralytics import YOLO
 # model = YOLO("yolo26n.pt")
 # model = YOLO("../../runs/detect/train2/weights/best.pt") # Best model from training
 model = YOLO("model_v5.pt")
+# model = YOLO("best_v12.pt")
 
 # Use real-time camera
 results = model.track(source="0", show=True, stream=True)
