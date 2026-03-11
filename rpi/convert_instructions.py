@@ -5,6 +5,16 @@ Converts algo service JSON responses into STM32 commands and Android UI
 commands.  Can be used as an importable module or run standalone to
 interactively convert a JSON response.
 
+Algo command format:
+    FW50  → Forward 50       → STM 1050, Android MOVE,50,FORWARD
+    BW30  → Backward 30      → STM 2030, Android MOVE,30,BACKWARD
+    FL00  → Forward Left      → STM 6000, Android TURN,FORWARD_LEFT
+    FR00  → Forward Right     → STM 7000, Android TURN,FORWARD_RIGHT
+    BL00  → Backward Left     → STM 8000, Android TURN,BACKWARD_LEFT
+    BR00  → Backward Right    → STM 9000, Android TURN,BACKWARD_RIGHT
+    SNAP4_C → Capture (obs 4)  → STM 5000, Android TARGET at runtime
+    FN / FIN → End marker      → skipped
+
 Standalone usage:
     # From a file
     python convert_instructions.py --file response.json
@@ -15,38 +25,15 @@ Standalone usage:
 
 import argparse
 import json
+import re
 import sys
 from typing import Any, Optional
 
-# ---------------------------------------------------------------------------
-# Command mapping tables
-# ---------------------------------------------------------------------------
+# Regex to split a movement command into prefix + numeric suffix
+_CMD_RE = re.compile(r"^([A-Z]+)(\d+)$", re.IGNORECASE)
+# SNAP commands: SNAP4_C, SNAP5_R, or legacy SNAP1
+_SNAP_RE = re.compile(r"^SNAP(\d+)(?:_([A-Z]))?$", re.IGNORECASE)
 
-# Algo string instructions → STM32 4-char commands
-STM_STRING_CMD: dict[str, str] = {
-    "LEFT":           "3000",
-    "RIGHT":          "4000",
-    "FORWARD_LEFT":   "6000",
-    "FORWARD_RIGHT":  "7000",
-    "BACKWARD_LEFT":  "8000",
-    "BACKWARD_RIGHT": "9000",
-}
-
-# Algo string instructions → Android UI commands
-ANDROID_TURN_CMD: dict[str, str] = {
-    "LEFT":           "STAT_TURN,LEFT",
-    "RIGHT":          "STAT_TURN,RIGHT",
-    "FORWARD_LEFT":   "TURN,FORWARD_LEFT",
-    "FORWARD_RIGHT":  "TURN,FORWARD_RIGHT",
-    "BACKWARD_LEFT":  "TURN,BACKWARD_LEFT",
-    "BACKWARD_RIGHT": "TURN,BACKWARD_RIGHT",
-}
-
-# Direction-code prefix for dict-based move instructions
-MOVE_DIR_CODE: dict[str, str] = {
-    "FORWARD":  "1",
-    "BACKWARD": "2",
-}
 
 # ---------------------------------------------------------------------------
 # Core conversion
@@ -54,37 +41,42 @@ MOVE_DIR_CODE: dict[str, str] = {
 
 
 def instruction_to_commands(
-    instruction: Any,
+    instruction: str,
 ) -> tuple[Optional[str], Optional[str]]:
     """
-    Convert one algo instruction into ``(stm_cmd, android_cmd)``.
-
-    Algo instructions are either:
-      - dict  ``{"amount": 50, "move": "FORWARD"}``  → ``("1050", "MOVE,50,FORWARD")``
-      - str   ``"FORWARD_LEFT"``                     → ``("6000", "TURN,FORWARD_LEFT")``
-      - str   ``"CAPTURE_IMAGE"``                    → ``("5000", None)``
+    Convert one algo instruction string into ``(stm_cmd, android_cmd)``.
     """
-    if isinstance(instruction, dict):
-        move   = instruction.get("move", "").upper()
-        amount = instruction.get("amount", 0)
-        code   = MOVE_DIR_CODE.get(move)
-        if code is None:
-            print(f"[CONVERT] Unknown move type: {move}")
-            return (None, None)
-        stm_cmd     = f"{code}{amount:03d}"
-        android_cmd = f"MOVE,{amount},{move}"
-        return (stm_cmd, android_cmd)
+    upper = instruction.upper()
 
-    if isinstance(instruction, str):
-        upper = instruction.upper()
-        if upper == "CAPTURE_IMAGE":
-            return ("5000", None)
-        stm_cmd     = STM_STRING_CMD.get(upper)
-        android_cmd = ANDROID_TURN_CMD.get(upper)
-        if stm_cmd is None:
-            print(f"[CONVERT] Unknown string instruction: {instruction}")
-        return (stm_cmd, android_cmd)
+    if upper in ("FIN", "FN"):
+        return (None, None)
 
+    # SNAP commands (e.g. SNAP4_C, SNAP5_R, SNAP1)
+    if _SNAP_RE.match(upper):
+        return ("5000", None)
+
+    m = _CMD_RE.match(upper)
+    if not m:
+        print(f"[CONVERT] Cannot parse: {instruction}")
+        return (None, None)
+
+    prefix = m.group(1)
+    num    = int(m.group(2))
+
+    if prefix == "FW":
+        return (f"1{num:03d}", f"MOVE,{num},FORWARD")
+    if prefix == "BW":
+        return (f"2{num:03d}", f"MOVE,{num},BACKWARD")
+    if prefix == "FL":
+        return ("6000", "TURN,FORWARD_LEFT")
+    if prefix == "FR":
+        return ("7000", "TURN,FORWARD_RIGHT")
+    if prefix == "BL":
+        return ("8000", "TURN,BACKWARD_LEFT")
+    if prefix == "BR":
+        return ("9000", "TURN,BACKWARD_RIGHT")
+
+    print(f"[CONVERT] Unknown instruction: {instruction}")
     return (None, None)
 
 
@@ -110,70 +102,26 @@ def convert_response(data: dict[str, Any]) -> None:
     """
     Parse new algo response format and print STM / Android commands.
     """
-    result = data.get("data", {})
-    commands = result.get("commands", [])
+    commands = data.get("data", {}).get("commands", [])
     if not commands:
         print("No commands found in response.")
         return
 
+    distance = data.get("data", {}).get("distance", "?")
+    print(f"\nAlgo response: {len(commands)} commands, distance={distance}\n")
+
     all_stm: list[str] = []
 
-    print("\n── Algo Commands ──")
-    print(f"  {'#':<4} {'Algo command':<20} {'STM':>6}  {'Android'}")
-    print(f"  {'─'*4} {'─'*20} {'─'*6}  {'─'*28}")
+    print(f"  {'#':<4} {'Algo':<10} {'STM':>6}  {'Android'}")
+    print(f"  {'─'*4} {'─'*10} {'─'*6}  {'─'*30}")
 
-    for i, cmd in enumerate(commands):
-
-        stm_cmd = None
-        android_cmd = None
-
-        # -------------------------
-        # Forward / Backward moves
-        # -------------------------
-        if cmd.startswith("FW"):
-            amount = int(cmd[2:])
-            stm_cmd = f"1{amount:03d}"
-            android_cmd = f"MOVE,{amount},FORWARD"
-
-        elif cmd.startswith("BW"):
-            amount = int(cmd[2:])
-            stm_cmd = f"2{amount:03d}"
-            android_cmd = f"MOVE,{amount},BACKWARD"
-
-        # -------------------------
-        # Turns
-        # -------------------------
-        elif cmd.startswith("FL"):
-            stm_cmd = "6000"
-            android_cmd = "TURN,FORWARD_LEFT"
-
-        elif cmd.startswith("FR"):
-            stm_cmd = "7000"
-            android_cmd = "TURN,FORWARD_RIGHT"
-
-        elif cmd.startswith("BL"):
-            stm_cmd = "8000"
-            android_cmd = "TURN,BACKWARD_LEFT"
-
-        elif cmd.startswith("BR"):
-            stm_cmd = "9000"
-            android_cmd = "TURN,BACKWARD_RIGHT"
-
-        # -------------------------
-        # SNAP command
-        # -------------------------
-        elif cmd.startswith("SNAP"):
-            stm_cmd = "5000"
-            android_cmd = f"CAPTURE_IMAGE,{cmd[4:]}"
-
-        else:
-            print(f"[CONVERT] Unknown command: {cmd}")
-
+    for i, cmd_str in enumerate(commands):
+        stm_cmd, android_cmd = instruction_to_commands(cmd_str)
         stm_str = stm_cmd or "—"
-        android_str = android_cmd or "—"
-
-        print(f"  {i:<4} {cmd:<20} {stm_str:>6}  {android_str}")
-
+        android_str = android_cmd or ("(SNAP → TARGET at runtime)"
+                                      if cmd_str.upper().startswith("SNAP")
+                                      else "(skip)")
+        print(f"  {i:<4} {cmd_str:<10} {stm_str:>6}  {android_str}")
         if stm_cmd:
             all_stm.append(stm_cmd)
 
