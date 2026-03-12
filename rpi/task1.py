@@ -516,6 +516,12 @@ def main() -> None:
                         help="PC detection ZMQ PUB port")
     parser.add_argument("--cam-port", type=int, default=5555,
                         help="Camera stream ZMQ PUB port")
+    parser.add_argument("--cam-width", type=int,
+                        default=CameraInterface.DEFAULT_WIDTH,
+                        help="Camera capture width")
+    parser.add_argument("--cam-height", type=int,
+                        default=CameraInterface.DEFAULT_HEIGHT,
+                        help="Camera capture height")
     parser.add_argument("--no-camera", action="store_true",
                         help="Skip camera (if pi_streamer already running)")
     parser.add_argument("--bt-mode", choices=["socket", "serial"], default="serial",
@@ -534,7 +540,11 @@ def main() -> None:
     # --- Camera ---------------------------------------------------------------
     cam: Optional[CameraInterface] = None
     if not args.no_camera:
-        cam = CameraInterface(port=args.cam_port)
+        cam = CameraInterface(
+            port=args.cam_port,
+            width=args.cam_width,
+            height=args.cam_height,
+        )
         if not cam.start():
             print("[INIT] Camera failed – continuing without streaming")
             cam = None
