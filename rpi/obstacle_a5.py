@@ -47,7 +47,7 @@ CMD_FORWARD  = "1000"   # move forward
 CMD_ROTATE   = "8000"   # rotate 90° and search next face
 MAX_ROTATES  = 3        # max "8000" commands (3 rotations = 4 faces total)
 WINDOW_SIZE  = 10       # rolling detection window
-CONFIDENCE_THRESHOLD = 8  # need 8/10 agreeing detections to be "certain"
+CONFIDENCE_THRESHOLD = 6  # need 8/10 agreeing detections to be "certain"
 VALID_CLS_RANGE = range(10, 42)  # image IDs 10–41 are valid
 
 STM_RECV_TIMEOUT = 30.0  # seconds to wait for STM response
