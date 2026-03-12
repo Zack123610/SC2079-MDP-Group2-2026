@@ -120,12 +120,12 @@ public class ControlFragment extends Fragment {
                     if (gridMap.getValidPosition()){
                         updateStatus("moving forward");}
                     else {
-                        Home.printMessage("obstacle");
+                        Home.printMessage("obstacle\n");
                         updateStatus("Unable to move forward");
                     }
 
                     //Home.printMessage("f");
-                    Home.printMessage("MOVE,10,FORWARD");
+                    Home.printMessage("MOVE,10,FORWARD\n");
                 }
                 else
                     updateStatus("Please press 'SET START POINT'");
@@ -141,7 +141,7 @@ public class ControlFragment extends Fragment {
                     gridMap.moveRobot("right");
                     Home.refreshLabel();
                     //Home.printMessage("fr");
-                    Home.printMessage("TURN,FORWARD_RIGHT");
+                    Home.printMessage("TURN,FORWARD_RIGHT\n");
 //                    showLog("test");
                     System.out.println(Arrays.toString(gridMap.getCurCoord()));
                 }
@@ -158,7 +158,7 @@ public class ControlFragment extends Fragment {
                     gridMap.moveRobot("backright");
                     Home.refreshLabel();
                     //Home.printMessage("br");
-                    Home.printMessage("TURN,BACKWARD_RIGHT");
+                    Home.printMessage("TURN,BACKWARD_RIGHT\n");
                     System.out.println(Arrays.toString(gridMap.getCurCoord()));
                 }
                 else
@@ -179,7 +179,7 @@ public class ControlFragment extends Fragment {
                     else
                         updateStatus("Unable to move backward");
                     //Home.printMessage("b");
-                    Home.printMessage("MOVE,10,BACKWARD");
+                    Home.printMessage("MOVE,10,BACKWARD\n");
                 }
                 else
                     updateStatus("Please press 'SET START POINT'");
@@ -196,7 +196,7 @@ public class ControlFragment extends Fragment {
                     Home.refreshLabel();
                     updateStatus("turning left");
                     //Home.printMessage("fl");
-                    Home.printMessage("TURN,FORWARD_LEFT");
+                    Home.printMessage("TURN,FORWARD_LEFT\n");
                 }
                 else
                     updateStatus("Please press 'SET START POINT'");
@@ -212,7 +212,7 @@ public class ControlFragment extends Fragment {
                     Home.refreshLabel();
                     updateStatus("turning left");
                     //Home.printMessage("bl");
-                    Home.printMessage("TURN,BACKWARD_LEFT");
+                    Home.printMessage("TURN,BACKWARD_LEFT\n");
                 }
                 else
                     updateStatus("Please press 'SET START POINT'");
@@ -238,7 +238,7 @@ public class ControlFragment extends Fragment {
                     // Send this String over via BT
                     //Home.printCoords(msg);
                     //Send BEGIN to the robot
-                    Home.printMessage("BEGIN"); //send a string "BEGIN" to the RPI
+                    Home.printMessage("BEGIN\n"); //send a string "BEGIN" to the RPI
                     // Start timer
                     Home.stopTimerFlag = false;
                     showToast("Task 1 timer start!");
@@ -268,7 +268,7 @@ public class ControlFragment extends Fragment {
                 }
                 else if (fastestToggleBtn.getText().equals("STOP")) {
                     showToast("Task 2 timer start!");
-                    Home.printMessage("BEGIN"); //send a string "BEGIN" to the RPI
+                    Home.printMessage("BEGIN\n"); //send a string "BEGIN" to the RPI
                     Home.stopWk9TimerFlag = false;
                     robotStatusTextView.setText("Task 2 Started");
                     fastestTimer = System.currentTimeMillis();

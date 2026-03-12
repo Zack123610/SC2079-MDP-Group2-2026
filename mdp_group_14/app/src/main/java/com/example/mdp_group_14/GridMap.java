@@ -275,7 +275,7 @@ public class GridMap extends View {
 
         String dir = (direction.equals("up")) ? "NORTH" : (direction.equals("down")) ? "SOUTH" : (direction.equals("left")) ? "WEST" : "EAST";
         if ((col - 3) >= 0 && (row - 1) >= 0) {
-            Home.printMessage("ROBOT" + "," + (col - 3) * 5 + "," + (row - 1) * 5 + "," + dir.toUpperCase());
+            Home.printMessage("ROBOT" + "," + (col - 3) * 5 + "," + (row - 1) * 5 + "," + dir.toUpperCase()+"\n");
         }
         this.invalidate();
     }
@@ -376,7 +376,7 @@ public class GridMap extends View {
                     cells[initialColumn][20 - initialRow].setType("unexplored");
                     ITEM_LIST.get(initialRow - 1)[initialColumn - 1] = "";
                     imageBearings.get(initialRow - 1)[initialColumn - 1] = "";
-                    Home.printMessage("OBSTACLE," + (i+1) + "," + (initialColumn)*10 + "," + (initialRow)*10 + ",-1");
+                    Home.printMessage("OBSTACLE," + (i+1) + "," + (initialColumn)*10 + "," + (initialRow)*10 + ",-1\n");
                     break;
                 }
             }
@@ -399,7 +399,7 @@ public class GridMap extends View {
                             obstacleCoord.set(i, new int[]{endColumn - 1, endRow - 1});
                             cells[endColumn][20 - endRow].setType(cells[initialColumn][20 - initialRow].type);
                             cells[initialColumn][20 - initialRow].setType("unexplored");
-                            Home.printMessage("OBSTACLE," + (i+1) + "," + (endColumn-1)*10 + "," + (endRow-1)*10 + "," + tempBearing.toUpperCase());
+                            Home.printMessage("OBSTACLE," + (i+1) + "," + (endColumn-1)*10 + "," + (endRow-1)*10 + "," + tempBearing.toUpperCase() +"\n");
                             break;
                         }
                     }
@@ -452,7 +452,7 @@ public class GridMap extends View {
                                 imageBearings.get(tRow - 1)[tCol - 1] = newBearing;
                                 for (int m = 0; m < obstacleCoord.size(); m++) {
                                     if (Arrays.equals(obstacleCoord.get(m), new int[]{tCol - 1, tRow - 1})) {
-                                        Home.printMessage("OBSTACLE," + (m+1) + "," + (tCol - 1)*10 + "," + (tRow - 1)*10 + "," + newBearing.toUpperCase());
+                                        Home.printMessage("OBSTACLE," + (m+1) + "," + (tCol - 1)*10 + "," + (tRow - 1)*10 + "," + newBearing.toUpperCase() +"\n");
                                         break;
                                     }
                                 }

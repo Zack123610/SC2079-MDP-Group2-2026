@@ -265,7 +265,7 @@ public class Home extends Fragment {
         if ((x - 2)>=0 && (y - 1)>=0)
         {
 //          BluetoothCommunications.getMessageReceivedTextView().append("ROBOT" + "," + (col - 2)*5 + "," + (row - 1)*5 + "," + dir.toUpperCase());
-            Home.printMessage("ROBOT" + "," + x + "," + y + "," + dir.toUpperCase());
+            Home.printMessage("ROBOT" + "," + x + "," + y + "," + dir.toUpperCase() +"\n");
         }
         else{
             showLog("out of grid");
