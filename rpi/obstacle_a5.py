@@ -236,7 +236,6 @@ def run(stm: STM32Interface, tracker: DetectionTracker) -> None:
             continue
 
         # --- Phase 1: move forward ----------------------------------------
-        tracker.clear()
         response = send_and_wait(stm, CMD_FORWARD)
         if response is None:
             print("[A5] STM32 did not respond. Try again.")
@@ -250,7 +249,6 @@ def run(stm: STM32Interface, tracker: DetectionTracker) -> None:
         rotate_count = 0
 
         while rotate_count <= MAX_ROTATES:
-            # Wait a fixed period for detections to accumulate on this face
             print(f"[A5] Collecting detections for {DETECTION_WAIT}s...")
             time.sleep(DETECTION_WAIT)
 
@@ -284,7 +282,6 @@ def run(stm: STM32Interface, tracker: DetectionTracker) -> None:
             # --- Rotate 90° ----------------------------------------------
             rotate_count += 1
             print(f"\n[A5] Rotating to next face ({rotate_count}/{MAX_ROTATES})...")
-            tracker.clear()
             resp = send_and_wait(stm, CMD_ROTATE)
             if resp is None:
                 print("[A5] STM32 did not respond to rotate. Aborting.")

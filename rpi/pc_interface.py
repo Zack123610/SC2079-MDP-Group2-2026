@@ -98,8 +98,7 @@ class PCInterface:
 
         self._zmq_context = zmq.Context()
         self._zmq_socket = self._zmq_context.socket(zmq.SUB)
-        self._zmq_socket.setsockopt(zmq.RCVHWM, 1)
-        self._zmq_socket.setsockopt(zmq.CONFLATE, 1)
+        self._zmq_socket.setsockopt(zmq.RCVHWM, 256)
         self._zmq_socket.setsockopt_string(zmq.SUBSCRIBE, "")
         self._zmq_socket.connect(f"tcp://{self._host}:{self._port}")
         print(f"[PC] Subscribed to detections on tcp://{self._host}:{self._port}")

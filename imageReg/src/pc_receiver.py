@@ -58,7 +58,7 @@ def main():
 
     # --- Detection result publisher (PC -> Pi) ----------------------------
     pub_socket = context.socket(zmq.PUB)
-    pub_socket.setsockopt(zmq.SNDHWM, 1)
+    pub_socket.setsockopt(zmq.SNDHWM, 256)
     pub_socket.bind(f"tcp://0.0.0.0:{args.result_port}")
     print(f"[INFO] Publishing detections on tcp://0.0.0.0:{args.result_port}")
 

@@ -225,13 +225,16 @@ def build_command_lists(
 
 def capture_image(tracker: DetectionTracker, obstacle_id: int) -> Optional[int]:
     """
-    Clear the detection window, wait for fresh detections, then evaluate.
+    Wait for the rolling detection window to be filled and cycled with
+    fresh detections, then evaluate.
 
-    The image ID is extracted from the class name (``"Name-id-XX"`` format).
+    The deque (maxlen=WINDOW_SIZE) is continuously fed by the background
+    collector — new detections push in and old ones drop off.  We sleep
+    DETECTION_WAIT seconds so the window has time to cycle through with
+    readings from the current face before we evaluate.
+
     Returns the numeric image ID if valid (10–41), else None.
     """
-    tracker.clear()
-
     print(f"[TASK1] CAPTURE_IMAGE – obstacle {obstacle_id}, "
           f"collecting for {DETECTION_WAIT}s …")
     time.sleep(DETECTION_WAIT)
