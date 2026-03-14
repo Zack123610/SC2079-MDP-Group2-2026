@@ -12,6 +12,7 @@ algo_service/*
 # RPi
 rpi/task1-one-by-one.py
 rpi/sample.json
+rpi/rpi_log.txt
 
 # Image Recognition
 imageReg/src/raw_tcp/*
