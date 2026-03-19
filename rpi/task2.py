@@ -14,19 +14,22 @@ Flow:
      If LEFT -> send 3030, if RIGHT -> send 4040.
   6. Wait for DONE, then notify Android TASK2,DONE.
 
-  python task2.py --pc-host <PC_IP> --pc-request-port 5557
+  python task2.py --inference-mode pc --pc-host <PC_IP> --pc-request-port 5557
+  python task2.py --inference-mode local --local-model yolo26n.pt
   python imageReg/src/pc_receiver.py --request-port 5557 --model yolo26n.pt
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 import time
 from typing import Any, Optional, Union
 
 import cv2
+import numpy as np
 
 from bluetooth_interface import BluetoothInterface as BluetoothSerial
 from bluetooth_interface_socket import BluetoothInterface as BluetoothSocket
@@ -56,6 +59,9 @@ STM_WAIT_TIMEOUT = 45.0
 INFERENCE_TIMEOUT = 5.0
 MAX_CAPTURE_RETRIES = 4
 CAMERA_WARMUP = 0.25
+DEFAULT_SAVE_DIR = "task2_captures"
+DEFAULT_LOCAL_MODEL = "task2_v4a.pt"
+DEFAULT_LOCAL_CONF = 0.5
 
 
 class SnapshotCamera:
@@ -131,6 +137,80 @@ class SnapshotCamera:
                 pass
             self._camera = None
             print("[CAM] Snapshot camera stopped")
+
+
+class LocalYoloInferencer:
+    """Local YOLO inferencer (runs on RPi)."""
+
+    def __init__(self, model_path: str, conf: float) -> None:
+        self._model_path = model_path
+        self._conf = conf
+        self._model = None
+
+    def start(self) -> bool:
+        try:
+            from ultralytics import YOLO  # type: ignore
+        except ImportError:
+            print("[LOCAL] ultralytics is not installed. Cannot run local inference.")
+            return False
+
+        try:
+            self._model = YOLO(self._model_path)
+            print(f"[LOCAL] Loaded model: {self._model_path} (conf={self._conf:.2f})")
+            return True
+        except Exception as e:
+            print(f"[LOCAL] Failed to load model '{self._model_path}': {e}")
+            self._model = None
+            return False
+
+    def infer(self, image_jpeg: bytes) -> Optional[dict[str, Any]]:
+        if self._model is None:
+            return None
+
+        frame = cv2.imdecode(np.frombuffer(image_jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if frame is None:
+            return {"ok": False, "boxes": [], "error": "failed to decode image"}
+
+        start_ts = time.time()
+        try:
+            results = self._model(frame, conf=self._conf, verbose=False)
+            boxes: list[dict[str, Any]] = []
+            for result in results:
+                for box in result.boxes:
+                    cls_id = int(box.cls[0])
+                    cls_name = self._class_name(cls_id)
+                    conf = float(box.conf[0])
+                    bbox = box.xyxy[0].tolist()
+                    boxes.append(
+                        {
+                            "cls_id": cls_id,
+                            "cls_name": cls_name,
+                            "conf": round(conf, 4),
+                            "bbox": [round(v, 1) for v in bbox],
+                        }
+                    )
+
+            inference_ms = (time.time() - start_ts) * 1000.0
+            return {
+                "ok": True,
+                "boxes": boxes,
+                "inference_ms": round(inference_ms, 2),
+            }
+        except Exception as e:
+            return {"ok": False, "boxes": [], "error": str(e)}
+
+    def stop(self) -> None:
+        self._model = None
+
+    def _class_name(self, cls_id: int) -> str:
+        if self._model is None:
+            return str(cls_id)
+        names = getattr(self._model, "names", {})
+        if isinstance(names, dict):
+            return str(names.get(cls_id, cls_id))
+        if isinstance(names, list) and 0 <= cls_id < len(names):
+            return str(names[cls_id])
+        return str(cls_id)
 
 
 def send_and_wait_done(
@@ -248,10 +328,13 @@ def decide_direction_from_boxes(boxes: list[dict[str, Any]]) -> Optional[str]:
 
 def detect_direction_from_photo(
     camera: SnapshotCamera,
-    pc: PCInterface,
+    inference_mode: str,
+    pc: Optional[PCInterface],
+    local_inferencer: Optional[LocalYoloInferencer],
     stage_name: str,
     retries: int,
     inference_timeout: float,
+    save_dir: str,
 ) -> Optional[str]:
     """Capture photo(s), request PC inference, and derive LEFT/RIGHT decision."""
     for attempt in range(1, retries + 1):
@@ -261,7 +344,17 @@ def detect_direction_from_photo(
             print(f"[TASK2] {stage_name}: capture failed, retrying...")
             continue
 
-        response = pc.request_inference(image_jpeg, timeout_s=inference_timeout)
+        if inference_mode == "local":
+            if local_inferencer is None:
+                print(f"[TASK2] {stage_name}: local inferencer is not available")
+                return None
+            response = local_inferencer.infer(image_jpeg)
+        else:
+            if pc is None:
+                print(f"[TASK2] {stage_name}: PC inferencer is not available")
+                return None
+            response = pc.request_inference(image_jpeg, timeout_s=inference_timeout)
+
         if not response:
             print(f"[TASK2] {stage_name}: no inference response, retrying...")
             continue
@@ -276,6 +369,15 @@ def detect_direction_from_photo(
             continue
 
         boxes = [box for box in boxes_raw if isinstance(box, dict)]
+        saved_path = annotate_and_save_image(
+            image_jpeg=image_jpeg,
+            boxes=boxes,
+            stage_name=stage_name,
+            attempt=attempt,
+            save_dir=save_dir,
+        )
+        if saved_path:
+            print(f"[TASK2] {stage_name}: saved annotated image -> {saved_path}")
         decision = decide_direction_from_boxes(boxes)
         print(f"[TASK2] {stage_name}: received {len(boxes)} box(es), decision={decision}")
         if decision:
@@ -290,10 +392,13 @@ def detect_direction_from_photo(
 def run(
     bt: BluetoothIface,
     stm: STM32Interface,
-    pc: PCInterface,
+    inference_mode: str,
+    pc: Optional[PCInterface],
+    local_inferencer: Optional[LocalYoloInferencer],
     camera: SnapshotCamera,
     retries: int,
     inference_timeout: float,
+    save_dir: str,
 ) -> None:
     print("\n" + "=" * 60)
     print("  Task 2 – Arrow-based Obstacle Decisions")
@@ -323,10 +428,13 @@ def run(
         # 2) First obstacle photo inference and turn
         first_direction = detect_direction_from_photo(
             camera=camera,
+            inference_mode=inference_mode,
             pc=pc,
+            local_inferencer=local_inferencer,
             stage_name="First obstacle",
             retries=retries,
             inference_timeout=inference_timeout,
+            save_dir=save_dir,
         )
         if first_direction is None:
             print("[TASK2] Aborting run (first obstacle decision failed)")
@@ -341,10 +449,13 @@ def run(
         # 3) Second obstacle photo inference and turn
         second_direction = detect_direction_from_photo(
             camera=camera,
+            inference_mode=inference_mode,
             pc=pc,
+            local_inferencer=local_inferencer,
             stage_name="Second obstacle",
             retries=retries,
             inference_timeout=inference_timeout,
+            save_dir=save_dir,
         )
         if second_direction is None:
             print("[TASK2] Aborting run (second obstacle decision failed)")
@@ -364,6 +475,7 @@ def _cleanup(
     stm: Optional[STM32Interface] = None,
     cam: Optional[SnapshotCamera] = None,
     pc: Optional[PCInterface] = None,
+    local_inferencer: Optional[LocalYoloInferencer] = None,
     bt: Optional[BluetoothIface] = None,
 ) -> None:
     if bt:
@@ -372,15 +484,80 @@ def _cleanup(
         pc.stop()
     if cam:
         cam.stop()
+    if local_inferencer:
+        local_inferencer.stop()
     if stm:
         stm.close()
 
 
+def annotate_and_save_image(
+    image_jpeg: bytes,
+    boxes: list[dict[str, Any]],
+    stage_name: str,
+    attempt: int,
+    save_dir: str,
+) -> Optional[str]:
+    """Draw detection boxes on captured image and save on RPi."""
+    try:
+        frame = cv2.imdecode(np.frombuffer(image_jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+    except Exception as e:
+        print(f"[TASK2] Failed to decode captured JPEG for saving: {e}")
+        return None
+
+    if frame is None:
+        return None
+
+    for box in boxes:
+        bbox = box.get("bbox", [])
+        if not isinstance(bbox, list) or len(bbox) != 4:
+            continue
+
+        try:
+            x1, y1, x2, y2 = [int(float(v)) for v in bbox]
+        except Exception:
+            continue
+
+        cls_name = str(box.get("cls_name", "unknown"))
+        conf = _parse_float(box.get("conf"), default=0.0)
+        label = f"{cls_name} {conf:.2f}"
+
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.putText(
+            frame,
+            label,
+            (x1, max(20, y1 - 10)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 255, 0),
+            2,
+        )
+
+    os.makedirs(save_dir, exist_ok=True)
+    stage_token = re.sub(r"[^a-z0-9]+", "_", stage_name.lower()).strip("_")
+    timestamp_ms = int(time.time() * 1000)
+    filename = f"{timestamp_ms}_{stage_token}_attempt{attempt}.jpg"
+    path = os.path.join(save_dir, filename)
+
+    try:
+        if not cv2.imwrite(path, frame):
+            return None
+        return path
+    except Exception as e:
+        print(f"[TASK2] Failed to save annotated image: {e}")
+        return None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Task 2 – Arrow decision flow")
-    parser.add_argument("--pc-host", required=True, help="PC IP address")
+    parser.add_argument("--inference-mode", choices=["pc", "local"], default="pc",
+                        help="Inference backend: pc (REQ/REP) or local (RPi YOLO)")
+    parser.add_argument("--pc-host", default=None, help="PC IP address (required if --inference-mode pc)")
     parser.add_argument("--pc-request-port", type=int, default=PCInterface.DEFAULT_REQUEST_PORT,
                         help="PC inference REQ/REP port")
+    parser.add_argument("--local-model", default=DEFAULT_LOCAL_MODEL,
+                        help="Local YOLO model path for --inference-mode local")
+    parser.add_argument("--local-conf", type=float, default=DEFAULT_LOCAL_CONF,
+                        help="Confidence threshold for --inference-mode local")
     parser.add_argument("--cam-width", type=int, default=SnapshotCamera.DEFAULT_WIDTH,
                         help="Camera capture width")
     parser.add_argument("--cam-height", type=int, default=SnapshotCamera.DEFAULT_HEIGHT,
@@ -395,6 +572,8 @@ def main() -> None:
                         help="Max capture/inference retries per obstacle")
     parser.add_argument("--inference-timeout", type=float, default=INFERENCE_TIMEOUT,
                         help="Timeout waiting for PC inference response (seconds)")
+    parser.add_argument("--save-dir", default=DEFAULT_SAVE_DIR,
+                        help="Directory to save annotated inference images")
     args = parser.parse_args()
 
     # STM32
@@ -417,16 +596,32 @@ def main() -> None:
         _cleanup(stm)
         sys.exit(1)
 
-    # PC inference request client
-    pc = PCInterface(
-        host=args.pc_host,
-        request_port=args.pc_request_port,
-    )
-    if not pc.start_request_client():
-        print("[INIT] PC inference client failed. Exiting.")
-        _cleanup(stm, cam=cam)
-        sys.exit(1)
-    print("[INIT] PC inference client running")
+    pc: Optional[PCInterface] = None
+    local_inferencer: Optional[LocalYoloInferencer] = None
+    if args.inference_mode == "pc":
+        if not args.pc_host:
+            print("[INIT] --pc-host is required for --inference-mode pc")
+            _cleanup(stm, cam=cam)
+            sys.exit(1)
+        pc = PCInterface(
+            host=args.pc_host,
+            request_port=args.pc_request_port,
+        )
+        if not pc.start_request_client():
+            print("[INIT] PC inference client failed. Exiting.")
+            _cleanup(stm, cam=cam)
+            sys.exit(1)
+        print("[INIT] PC inference client running")
+    else:
+        local_inferencer = LocalYoloInferencer(
+            model_path=args.local_model,
+            conf=max(0.0, min(1.0, args.local_conf)),
+        )
+        if not local_inferencer.start():
+            print("[INIT] Local inferencer failed. Exiting.")
+            _cleanup(stm, cam=cam)
+            sys.exit(1)
+        print("[INIT] Local inferencer running")
 
     # Bluetooth
     if args.bt_mode == "socket":
@@ -437,7 +632,7 @@ def main() -> None:
         bt = BluetoothSerial()
     if not bt.start():
         print("[INIT] Bluetooth failed. Exiting.")
-        _cleanup(stm, cam=cam, pc=pc)
+        _cleanup(stm, cam=cam, pc=pc, local_inferencer=local_inferencer)
         sys.exit(1)
     print("[INIT] Bluetooth connected")
 
@@ -445,15 +640,18 @@ def main() -> None:
         run(
             bt=bt,
             stm=stm,
+            inference_mode=args.inference_mode,
             pc=pc,
+            local_inferencer=local_inferencer,
             camera=cam,
             retries=max(1, args.retries),
             inference_timeout=max(0.1, args.inference_timeout),
+            save_dir=args.save_dir,
         )
     except KeyboardInterrupt:
         print("\n[TASK2] Interrupted")
     finally:
-        _cleanup(stm, cam=cam, pc=pc, bt=bt)
+        _cleanup(stm, cam=cam, pc=pc, local_inferencer=local_inferencer, bt=bt)
         print("[TASK2] Shutdown complete")
 
 
