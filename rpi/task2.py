@@ -61,8 +61,8 @@ CAMERA_WARMUP = 0.25
 class SnapshotCamera:
     """Picamera2 one-shot capture helper."""
 
-    DEFAULT_WIDTH = 1280
-    DEFAULT_HEIGHT = 720
+    DEFAULT_WIDTH = 3280
+    DEFAULT_HEIGHT = 2464
     DEFAULT_QUALITY = 80
 
     def __init__(
