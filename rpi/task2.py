@@ -180,6 +180,18 @@ def detection_collector(
             time.sleep(0.01)
 
 
+def prepare_for_detection(pc: PCInterface, tracker: ArrowDetectionTracker) -> None:
+    """
+    Clear tracker and drain PC queue so the next detection window starts fresh.
+    Call this right after receiving DONE from STM32, before each detection window.
+    """
+    tracker.clear()
+    # Drain any stale detections from the PC queue (from before/during the move)
+    discarded = pc.get_all()
+    if discarded:
+        print(f"[TASK2] Cleared {len(discarded)} stale detection(s) from queue")
+
+
 def detect_direction(
     tracker: ArrowDetectionTracker,
     stage_name: str,
@@ -225,6 +237,7 @@ def detect_direction(
 def run(
     bt: BluetoothIface,
     stm: STM32Interface,
+    pc: PCInterface,
     tracker: ArrowDetectionTracker,
     detection_time: float,
     retries: int,
@@ -257,6 +270,7 @@ def run(
             continue
 
         # 2) Detect first arrow and execute turn
+        prepare_for_detection(pc, tracker)
         first_direction = detect_direction(
             tracker=tracker,
             stage_name="First obstacle",
@@ -275,6 +289,7 @@ def run(
             continue
 
         # 3) Detect second arrow and execute turn
+        prepare_for_detection(pc, tracker)
         second_direction = detect_direction(
             tracker=tracker,
             stage_name="Second obstacle",
@@ -397,6 +412,7 @@ def main() -> None:
         run(
             bt=bt,
             stm=stm,
+            pc=pc,
             tracker=tracker,
             detection_time=max(0.1, args.detection_time),
             retries=max(1, args.retries),
