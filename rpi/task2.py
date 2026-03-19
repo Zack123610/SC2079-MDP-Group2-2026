@@ -1,22 +1,21 @@
 """
-Task 2 – Two-obstacle left/right decision flow.
+Task 2 – Two-obstacle left/right decision flow (photo-based inference).
 
 Flow:
   1. Wait for Android to send BEGIN.
   2. Send STM command 1000, wait for DONE.
-  3. Run 1-second detection window, count LEFT vs RIGHT detections only.
-     - "39" or "Left" => LEFT
-     - "38" or "Right" => RIGHT
-     - Obstacle/others are ignored
-     If LEFT > RIGHT -> send 3000, else if RIGHT > LEFT -> send 4000.
+  3. Capture one photo with Picamera2 and send to PC for inference.
+     - Ignore obstacle detections.
+     - LEFT = class id 39 or class name containing "left".
+     - RIGHT = class id 38 or class name containing "right".
+     If LEFT -> send 3000, if RIGHT -> send 4000.
   4. Wait for DONE.
-  5. Run another 1-second detection window.
-     If LEFT > RIGHT -> send 3030, else if RIGHT > LEFT -> send 4040.
-  6. Wait for DONE.
+  5. Capture another photo and infer again.
+     If LEFT -> send 3030, if RIGHT -> send 4040.
+  6. Wait for DONE, then notify Android TASK2,DONE.
 
-STM command format:
-  XXXX
-  (4 ASCII characters, no < > framing, no checksum bytes)
+  python task2.py --pc-host <PC_IP> --pc-request-port 5557
+  python imageReg/src/pc_receiver.py --request-port 5557 --model yolo26n.pt
 """
 
 from __future__ import annotations
@@ -24,15 +23,22 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-import threading
 import time
 from typing import Any, Optional, Union
 
+import cv2
+
 from bluetooth_interface import BluetoothInterface as BluetoothSerial
 from bluetooth_interface_socket import BluetoothInterface as BluetoothSocket
-from camera_interface import CameraInterface
 from pc_interface import PCInterface
 from stm32_interface import STM32Interface
+
+try:
+    from picamera2 import Picamera2  # type: ignore
+    _PICAMERA_AVAILABLE = True
+except ImportError:
+    Picamera2 = None  # type: ignore
+    _PICAMERA_AVAILABLE = False
 
 BluetoothIface = Union[BluetoothSerial, BluetoothSocket]
 
@@ -47,9 +53,84 @@ CMD_SECOND_LEFT = "3030"
 CMD_SECOND_RIGHT = "4040"
 
 STM_WAIT_TIMEOUT = 45.0
-DETECTION_TIME = 1.0
-MAX_DETECTION_RETRIES = 4
-MIN_DISTINCT_MARGIN = 2
+INFERENCE_TIMEOUT = 5.0
+MAX_CAPTURE_RETRIES = 4
+CAMERA_WARMUP = 0.25
+
+
+class SnapshotCamera:
+    """Picamera2 one-shot capture helper."""
+
+    DEFAULT_WIDTH = 1280
+    DEFAULT_HEIGHT = 720
+    DEFAULT_QUALITY = 80
+
+    def __init__(
+        self,
+        width: int = DEFAULT_WIDTH,
+        height: int = DEFAULT_HEIGHT,
+        quality: int = DEFAULT_QUALITY,
+        warmup_s: float = CAMERA_WARMUP,
+    ) -> None:
+        self._width = width
+        self._height = height
+        self._quality = quality
+        self._warmup_s = warmup_s
+        self._camera = None
+
+    def start(self) -> bool:
+        if not _PICAMERA_AVAILABLE:
+            print("[CAM] picamera2 is not installed. Cannot capture images.")
+            return False
+
+        try:
+            self._camera = Picamera2()
+            config = self._camera.create_still_configuration(
+                main={
+                    "size": (self._width, self._height),
+                    "format": "RGB888",
+                }
+            )
+            self._camera.configure(config)
+            self._camera.start()
+            time.sleep(max(0.0, self._warmup_s))
+            print(
+                "[CAM] Ready for snapshots: "
+                f"{self._width}x{self._height}, JPEG quality={self._quality}"
+            )
+            return True
+        except Exception as e:
+            print(f"[CAM] Failed to start snapshot camera: {e}")
+            self.stop()
+            return False
+
+    def capture_jpeg(self) -> Optional[bytes]:
+        if not self._camera:
+            return None
+
+        try:
+            frame = self._camera.capture_array()
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            success, encoded = cv2.imencode(
+                ".jpg",
+                frame_bgr,
+                [cv2.IMWRITE_JPEG_QUALITY, self._quality],
+            )
+            if not success:
+                return None
+            return encoded.tobytes()
+        except Exception as e:
+            print(f"[CAM] Snapshot capture failed: {e}")
+            return None
+
+    def stop(self) -> None:
+        if self._camera:
+            try:
+                self._camera.stop()
+            except Exception:
+                pass
+            self._camera = None
+            print("[CAM] Snapshot camera stopped")
 
 
 def send_and_wait_done(
@@ -64,7 +145,6 @@ def send_and_wait_done(
         return False
 
     print(f"[TASK2] -> STM32: {payload}")
-
     if not stm.send(payload, add_newline=False):
         print("[TASK2] Failed to send to STM32")
         return False
@@ -84,10 +164,6 @@ def send_and_wait_done(
     return False
 
 
-# ---------------------------------------------------------------------------
-# Detection tracker
-# ---------------------------------------------------------------------------
-
 _ID_SUFFIX_RE = re.compile(r"-id-(\d+)$", re.IGNORECASE)
 
 
@@ -97,11 +173,16 @@ def _parse_int(value: Any) -> Optional[int]:
     if value is None:
         return None
     s = str(value).strip()
-    if not s:
-        return None
     if s.isdigit():
         return int(s)
     return None
+
+
+def _parse_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
 
 
 def classify_arrow(det: dict[str, Any]) -> Optional[str]:
@@ -124,124 +205,95 @@ def classify_arrow(det: dict[str, Any]) -> Optional[str]:
 
     ids = {v for v in (cls_id, name_id) if v is not None}
 
+    if "obstacle" in cls_name_l:
+        return "OBSTACLE"
     if 39 in ids or "left" in cls_name_l:
         return "LEFT"
     if 38 in ids or "right" in cls_name_l:
         return "RIGHT"
-    if "obstacle" in cls_name_l:
-        return "OBSTACLE"
     return None
 
 
-class ArrowDetectionTracker:
-    """Thread-safe running counts of detections in the current window."""
+def decide_direction_from_boxes(boxes: list[dict[str, Any]]) -> Optional[str]:
+    """Pick LEFT/RIGHT from one inference result's boxes, ignoring obstacles."""
+    left_count = 0
+    right_count = 0
+    left_best = -1.0
+    right_best = -1.0
 
-    def __init__(self) -> None:
-        self._left = 0
-        self._right = 0
-        self._ignored = 0
-        self._total = 0
-        self._lock = threading.Lock()
+    for box in boxes:
+        label = classify_arrow(box)
+        conf = _parse_float(box.get("conf"), default=0.0)
+        if label == "LEFT":
+            left_count += 1
+            left_best = max(left_best, conf)
+        elif label == "RIGHT":
+            right_count += 1
+            right_best = max(right_best, conf)
 
-    def clear(self) -> None:
-        with self._lock:
-            self._left = 0
-            self._right = 0
-            self._ignored = 0
-            self._total = 0
+    if left_count == 0 and right_count == 0:
+        return None
 
-    def push(self, det: dict[str, Any]) -> None:
-        label = classify_arrow(det)
-        with self._lock:
-            self._total += 1
-            if label == "LEFT":
-                self._left += 1
-            elif label == "RIGHT":
-                self._right += 1
-            else:
-                self._ignored += 1
+    if left_count > right_count:
+        return "LEFT"
+    if right_count > left_count:
+        return "RIGHT"
 
-    def snapshot(self) -> tuple[int, int, int, int]:
-        with self._lock:
-            return (self._left, self._right, self._ignored, self._total)
+    if left_best > right_best:
+        return "LEFT"
+    if right_best > left_best:
+        return "RIGHT"
+    return None
 
 
-def detection_collector(
+def detect_direction_from_photo(
+    camera: SnapshotCamera,
     pc: PCInterface,
-    tracker: ArrowDetectionTracker,
-    stop_event: threading.Event,
-) -> None:
-    """Drain PC detections and feed the tracker continuously."""
-    while not stop_event.is_set():
-        det = pc.get_detection()
-        if det:
-            tracker.push(det)
-        else:
-            time.sleep(0.01)
-
-
-def prepare_for_detection(pc: PCInterface, tracker: ArrowDetectionTracker) -> None:
-    """
-    Clear tracker and drain PC queue so the next detection window starts fresh.
-    Call this right after receiving DONE from STM32, before each detection window.
-    """
-    tracker.clear()
-    # Drain any stale detections from the PC queue (from before/during the move)
-    discarded = pc.get_all()
-    if discarded:
-        print(f"[TASK2] Cleared {len(discarded)} stale detection(s) from queue")
-
-
-def detect_direction(
-    tracker: ArrowDetectionTracker,
     stage_name: str,
-    detection_time: float,
     retries: int,
-    min_distinct_margin: int,
+    inference_timeout: float,
 ) -> Optional[str]:
-    """
-    Run detection windows until a non-tie decision is obtained.
-
-    Returns:
-        "LEFT" / "RIGHT" / None
-    """
+    """Capture photo(s), request PC inference, and derive LEFT/RIGHT decision."""
     for attempt in range(1, retries + 1):
-        tracker.clear()
-        print(f"[TASK2] {stage_name}: collecting detections "
-              f"({detection_time:.1f}s), attempt {attempt}/{retries}")
-        time.sleep(detection_time)
-
-        left, right, ignored, total = tracker.snapshot()
-        diff = abs(left - right)
-        print(f"[TASK2] {stage_name}: LEFT={left}, RIGHT={right}, "
-              f"ignored={ignored}, total={total}, diff={diff}")
-
-        if left == right:
-            print(f"[TASK2] {stage_name}: tie, retrying...")
+        print(f"[TASK2] {stage_name}: capturing photo (attempt {attempt}/{retries})")
+        image_jpeg = camera.capture_jpeg()
+        if not image_jpeg:
+            print(f"[TASK2] {stage_name}: capture failed, retrying...")
             continue
 
-        decision = "LEFT" if left > right else "RIGHT"
-        if diff < min_distinct_margin:
-            print(f"[TASK2] {stage_name}: warning - not very distinct "
-                  f"(min={min_distinct_margin}), using {decision}")
-        return decision
+        response = pc.request_inference(image_jpeg, timeout_s=inference_timeout)
+        if not response:
+            print(f"[TASK2] {stage_name}: no inference response, retrying...")
+            continue
 
-    print(f"[TASK2] {stage_name}: failed to get a clear LEFT/RIGHT decision")
+        if not response.get("ok", True):
+            print(f"[TASK2] {stage_name}: PC returned error: {response.get('error')}")
+            continue
+
+        boxes_raw = response.get("boxes", [])
+        if not isinstance(boxes_raw, list):
+            print(f"[TASK2] {stage_name}: invalid response boxes type")
+            continue
+
+        boxes = [box for box in boxes_raw if isinstance(box, dict)]
+        decision = decide_direction_from_boxes(boxes)
+        print(f"[TASK2] {stage_name}: received {len(boxes)} box(es), decision={decision}")
+        if decision:
+            return decision
+
+        print(f"[TASK2] {stage_name}: no LEFT/RIGHT found, retrying...")
+
+    print(f"[TASK2] {stage_name}: failed to get LEFT/RIGHT after {retries} attempt(s)")
     return None
 
-
-# ---------------------------------------------------------------------------
-# Task2 flow
-# ---------------------------------------------------------------------------
 
 def run(
     bt: BluetoothIface,
     stm: STM32Interface,
     pc: PCInterface,
-    tracker: ArrowDetectionTracker,
-    detection_time: float,
+    camera: SnapshotCamera,
     retries: int,
-    min_distinct_margin: int,
+    inference_timeout: float,
 ) -> None:
     print("\n" + "=" * 60)
     print("  Task 2 – Arrow-based Obstacle Decisions")
@@ -257,7 +309,6 @@ def run(
 
         token = msg.strip().upper()
         print(f"[TASK2] <- Android: '{msg.strip()}'")
-
         if token != "BEGIN":
             print("[TASK2] Ignoring message (expecting BEGIN)")
             continue
@@ -269,14 +320,13 @@ def run(
             print("[TASK2] Aborting run (step 1 failed)")
             continue
 
-        # 2) Detect first arrow and execute turn
-        prepare_for_detection(pc, tracker)
-        first_direction = detect_direction(
-            tracker=tracker,
+        # 2) First obstacle photo inference and turn
+        first_direction = detect_direction_from_photo(
+            camera=camera,
+            pc=pc,
             stage_name="First obstacle",
-            detection_time=detection_time,
             retries=retries,
-            min_distinct_margin=min_distinct_margin,
+            inference_timeout=inference_timeout,
         )
         if first_direction is None:
             print("[TASK2] Aborting run (first obstacle decision failed)")
@@ -288,14 +338,13 @@ def run(
             print("[TASK2] Aborting run (step 3 failed)")
             continue
 
-        # 3) Detect second arrow and execute turn
-        prepare_for_detection(pc, tracker)
-        second_direction = detect_direction(
-            tracker=tracker,
+        # 3) Second obstacle photo inference and turn
+        second_direction = detect_direction_from_photo(
+            camera=camera,
+            pc=pc,
             stage_name="Second obstacle",
-            detection_time=detection_time,
             retries=retries,
-            min_distinct_margin=min_distinct_margin,
+            inference_timeout=inference_timeout,
         )
         if second_direction is None:
             print("[TASK2] Aborting run (second obstacle decision failed)")
@@ -311,13 +360,9 @@ def run(
         bt.send("TASK2,DONE")
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 def _cleanup(
     stm: Optional[STM32Interface] = None,
-    cam: Optional[CameraInterface] = None,
+    cam: Optional[SnapshotCamera] = None,
     pc: Optional[PCInterface] = None,
     bt: Optional[BluetoothIface] = None,
 ) -> None:
@@ -334,24 +379,22 @@ def _cleanup(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Task 2 – Arrow decision flow")
     parser.add_argument("--pc-host", required=True, help="PC IP address")
-    parser.add_argument("--pc-port", type=int, default=5556,
-                        help="PC detection ZMQ PUB port")
-    parser.add_argument("--cam-port", type=int, default=5555,
-                        help="Camera stream ZMQ PUB port")
-    parser.add_argument("--cam-width", type=int, default=CameraInterface.DEFAULT_WIDTH,
+    parser.add_argument("--pc-request-port", type=int, default=PCInterface.DEFAULT_REQUEST_PORT,
+                        help="PC inference REQ/REP port")
+    parser.add_argument("--cam-width", type=int, default=SnapshotCamera.DEFAULT_WIDTH,
                         help="Camera capture width")
-    parser.add_argument("--cam-height", type=int, default=CameraInterface.DEFAULT_HEIGHT,
+    parser.add_argument("--cam-height", type=int, default=SnapshotCamera.DEFAULT_HEIGHT,
                         help="Camera capture height")
-    parser.add_argument("--no-camera", action="store_true",
-                        help="Skip camera (if external streamer already running)")
+    parser.add_argument("--cam-quality", type=int, default=SnapshotCamera.DEFAULT_QUALITY,
+                        help="JPEG quality for snapshots")
+    parser.add_argument("--cam-warmup", type=float, default=CAMERA_WARMUP,
+                        help="Camera warmup time after start (seconds)")
     parser.add_argument("--bt-mode", choices=["socket", "serial"], default="serial",
                         help="Bluetooth backend: socket or serial")
-    parser.add_argument("--detection-time", type=float, default=DETECTION_TIME,
-                        help="Detection window duration (seconds)")
-    parser.add_argument("--retries", type=int, default=MAX_DETECTION_RETRIES,
-                        help="Max detection retries per obstacle")
-    parser.add_argument("--min-distinct-margin", type=int, default=MIN_DISTINCT_MARGIN,
-                        help="Warn if |LEFT-RIGHT| is below this margin")
+    parser.add_argument("--retries", type=int, default=MAX_CAPTURE_RETRIES,
+                        help="Max capture/inference retries per obstacle")
+    parser.add_argument("--inference-timeout", type=float, default=INFERENCE_TIMEOUT,
+                        help="Timeout waiting for PC inference response (seconds)")
     args = parser.parse_args()
 
     # STM32
@@ -362,27 +405,28 @@ def main() -> None:
         sys.exit(1)
     print("[INIT] STM32 connected")
 
-    # Camera
-    cam: Optional[CameraInterface] = None
-    if not args.no_camera:
-        cam = CameraInterface(
-            port=args.cam_port,
-            width=args.cam_width,
-            height=args.cam_height,
-        )
-        if cam.start():
-            print("[INIT] Camera streaming")
-        else:
-            print("[INIT] Camera failed - continuing without camera")
-            cam = None
+    # Camera (snapshot mode)
+    cam = SnapshotCamera(
+        width=args.cam_width,
+        height=args.cam_height,
+        quality=max(1, min(100, args.cam_quality)),
+        warmup_s=max(0.0, args.cam_warmup),
+    )
+    if not cam.start():
+        print("[INIT] Snapshot camera failed. Exiting.")
+        _cleanup(stm)
+        sys.exit(1)
 
-    # PC detection listener
-    pc = PCInterface(host=args.pc_host, port=args.pc_port)
-    if not pc.start():
-        print("[INIT] PC detection listener failed. Exiting.")
+    # PC inference request client
+    pc = PCInterface(
+        host=args.pc_host,
+        request_port=args.pc_request_port,
+    )
+    if not pc.start_request_client():
+        print("[INIT] PC inference client failed. Exiting.")
         _cleanup(stm, cam=cam)
         sys.exit(1)
-    print("[INIT] PC detection listener running")
+    print("[INIT] PC inference client running")
 
     # Bluetooth
     if args.bt_mode == "socket":
@@ -397,32 +441,18 @@ def main() -> None:
         sys.exit(1)
     print("[INIT] Bluetooth connected")
 
-    # Detection tracker + collector thread
-    tracker = ArrowDetectionTracker()
-    stop_event = threading.Event()
-    collector = threading.Thread(
-        target=detection_collector,
-        args=(pc, tracker, stop_event),
-        daemon=True,
-    )
-    collector.start()
-
-    # Main loop
     try:
         run(
             bt=bt,
             stm=stm,
             pc=pc,
-            tracker=tracker,
-            detection_time=max(0.1, args.detection_time),
+            camera=cam,
             retries=max(1, args.retries),
-            min_distinct_margin=max(0, args.min_distinct_margin),
+            inference_timeout=max(0.1, args.inference_timeout),
         )
     except KeyboardInterrupt:
         print("\n[TASK2] Interrupted")
     finally:
-        stop_event.set()
-        collector.join(timeout=2.0)
         _cleanup(stm, cam=cam, pc=pc, bt=bt)
         print("[TASK2] Shutdown complete")
 
