@@ -15,8 +15,8 @@ Flow:
   6. Wait for DONE, then notify Android TASK2,DONE.
 
   python task2.py --inference-mode pc --pc-host <PC_IP> --pc-request-port 5557
-  python task2.py --inference-mode local --local-model yolo26n.pt
-  python imageReg/src/pc_receiver.py --request-port 5557 --model yolo26n.pt
+  python task2.py --inference-mode local --local-model task2_v4a.pt
+  python imageReg/src/pc_receiver.py --request-port 5557 --model task2_v4a.pt
 """
 
 from __future__ import annotations
