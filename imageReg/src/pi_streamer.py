@@ -62,8 +62,8 @@ def main():
             # Capture frame
             frame = picam2.capture_array()
             
-            # Convert RGB to BGR for OpenCV encoding
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            # frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) # Convert RGB to BGR for OpenCV encoding
+            frame_bgr = frame
             
             # Encode to JPEG
             success, encoded = cv2.imencode(".jpg", frame_bgr, encode_params)
