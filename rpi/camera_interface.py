@@ -56,9 +56,9 @@ class CameraInterface:
     """
 
     DEFAULT_PORT = 5555
-    DEFAULT_WIDTH = 1280
-    DEFAULT_HEIGHT = 720
-    DEFAULT_FPS = 60
+    DEFAULT_WIDTH = 3280 # 3280 for task2, 1280 for task1
+    DEFAULT_HEIGHT = 2464 # 2464 for task2, 720 for task1
+    DEFAULT_FPS = 15 # 15 for task2, 60 for task1
     DEFAULT_QUALITY = 80
 
     def __init__(
@@ -174,7 +174,8 @@ class CameraInterface:
         while self._running:
             try:
                 frame = self._camera.capture_array()
-                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                # frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) # This converts yellow pixels to blue pixels
+                frame_bgr = frame
 
                 success, encoded = cv2.imencode(".jpg", frame_bgr, encode_params)
                 if not success:
@@ -231,7 +232,7 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=5555, help="ZMQ PUB port")
     parser.add_argument("--width", type=int, default=CameraInterface.DEFAULT_WIDTH)
     parser.add_argument("--height", type=int, default=CameraInterface.DEFAULT_HEIGHT)
-    parser.add_argument("--fps", type=int, default=60)
+    parser.add_argument("--fps", type=int, default=CameraInterface.DEFAULT_FPS)
     parser.add_argument("--quality", type=int, default=80)
     args = parser.parse_args()
 
