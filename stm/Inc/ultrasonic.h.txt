@@ -1,0 +1,13 @@
+#ifndef INC_ULTRASONIC_H_
+#define INC_ULTRASONIC_H_
+
+#include "main.h" // Required for HAL types and definitions
+
+// Function Prototypes
+void US_Trigger(void);   // Sends the trigger pulse
+float US_GetDistance(void); // Calculates distance in cm
+uint32_t US_GetEchoTime(void); // Returns raw echo time in us
+void delay_us(uint16_t us);    // Microsecond delay function
+
+#endif
+

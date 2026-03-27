@@ -1,0 +1,22 @@
+#pragma once
+#include "stm32f4xx_hal.h"
+#include <stdint.h>
+
+// --- Hardware mapping from your Task 1 project ---
+// Servo signal: TIM12_CH2 on PB15
+// Timer config used:
+//   PSC = 71, ARR = 19999  (assuming 72 MHz timer clock)
+//   => timer tick = 1 us, PWM period = 20 ms (50 Hz)
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void ServoSteer_Init(TIM_HandleTypeDef *htim);
+void ServoSteer_WriteUs(uint16_t usec);
+uint16_t ServoSteer_WheelDegToUs(float wheel_deg);
+void ServoSteer_WriteWheelDeg(float wheel_deg);
+
+#ifdef __cplusplus
+}
+#endif

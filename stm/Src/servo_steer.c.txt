@@ -1,0 +1,45 @@
+#include "servo_steer.h"
+
+// ======= Taken from your Task 1 main.c (servo section) =======
+#define STEER_US_LEFT      900U     // +36°
+#define STEER_US_CENTER    1350U    //  0°
+#define STEER_US_RIGHT     2400U    // -36°
+#define STEER_MAX_DEG      36.0f
+
+static TIM_HandleTypeDef *g_servo_tim = NULL;
+static uint32_t g_servo_ch = TIM_CHANNEL_2;
+
+void ServoSteer_Init(TIM_HandleTypeDef *htim)
+{
+    g_servo_tim = htim;
+    // Ensure PWM is started (same as in main.c: HAL_TIM_PWM_Start(&htim12, TIM_CHANNEL_2))
+    HAL_TIM_PWM_Start(g_servo_tim, g_servo_ch);
+    ServoSteer_WriteUs(STEER_US_CENTER);
+}
+
+// Raw servo write in microseconds (works because TIM12 tick = 1us in your config)
+void ServoSteer_WriteUs(uint16_t usec)
+{
+    if (!g_servo_tim) return;
+    __HAL_TIM_SET_COMPARE(g_servo_tim, g_servo_ch, usec);
+}
+
+// Map wheel angle (deg, +36..-36) to pulse width in microseconds
+uint16_t ServoSteer_WheelDegToUs(float wheel_deg)
+{
+    if (wheel_deg >  STEER_MAX_DEG) wheel_deg =  STEER_MAX_DEG;
+    if (wheel_deg < -STEER_MAX_DEG) wheel_deg = -STEER_MAX_DEG;
+
+    // 1500 - 16.6667*deg  (since +36° => 900us, -36° => 2100us)
+    float usec = 1500.0f - (wheel_deg * (600.0f / 36.0f));
+
+    if (usec < (float)STEER_US_LEFT)  usec = (float)STEER_US_LEFT;
+    if (usec > (float)STEER_US_RIGHT) usec = (float)STEER_US_RIGHT;
+
+    return (uint16_t)(usec + 0.5f);
+}
+
+void ServoSteer_WriteWheelDeg(float wheel_deg)
+{
+    ServoSteer_WriteUs(ServoSteer_WheelDegToUs(wheel_deg));
+}

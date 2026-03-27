@@ -1,0 +1,22 @@
+#ifndef MOTOR_H
+#define MOTOR_H
+
+#include <stdint.h>
+
+void MotorA_Init(void);
+void MotorA_Stop(void);
+void MotorA_Forward(uint16_t pwm);
+void MotorA_Reverse(uint16_t pwm);
+
+//void MotorB_Init(void);
+//void MotorB_Stop(void);
+//void MotorB_Forward(uint16_t pwm);
+//void MotorB_Reverse(uint16_t pwm);
+
+/* Motor D (PE13 / PE14) */
+void MotorD_Init(void);
+void MotorD_Stop(void);
+void MotorD_Forward(uint16_t pwm);
+void MotorD_Reverse(uint16_t pwm);
+
+#endif
