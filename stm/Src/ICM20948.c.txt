@@ -1,0 +1,121 @@
+#include "icm20948.h"
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+// Internal Registers
+#define REG_BANK_SEL 0x7F
+#define REG_PWR_MGMT_1 0x06
+#define REG_ACCEL_XOUT_H 0x2D
+#define REG_GYRO_XOUT_H 0x33
+
+// 1. INITIALIZATION FUNCTION (Put your "Wake Up" code here!)
+void ICM_Init(I2C_HandleTypeDef *hi2c)
+{
+    uint8_t data = 0x00;
+
+    // Select Bank 0
+    HAL_I2C_Mem_Write(hi2c, ICM_ADDR, REG_BANK_SEL, 1, &data, 1, 100);
+
+    // Wake up the sensor (Write 0x01 to PWR_MGMT_1)
+    data = 0x01;
+    HAL_I2C_Mem_Write(hi2c, ICM_ADDR, REG_PWR_MGMT_1, 1, &data, 1, 100);
+
+    HAL_Delay(100); // Wait for sensor to stabilize
+}
+
+// 2. ACCELEROMETER READ
+void ICM_ReadAccel(I2C_HandleTypeDef *hi2c, float *accel_g)
+{
+    uint8_t raw_data[6];
+    int16_t raw_accel[3];
+    uint8_t bank = 0x00;
+
+    // Ensure Bank 0
+    HAL_I2C_Mem_Write(hi2c, ICM_ADDR, REG_BANK_SEL, 1, &bank, 1, 10);
+
+    // Read Data
+    HAL_I2C_Mem_Read(hi2c, ICM_ADDR, REG_ACCEL_XOUT_H, 1, raw_data, 6, 100);
+
+    // Parse
+    raw_accel[0] = (int16_t)(raw_data[0] << 8 | raw_data[1]);
+    raw_accel[1] = (int16_t)(raw_data[2] << 8 | raw_data[3]);
+    raw_accel[2] = (int16_t)(raw_data[4] << 8 | raw_data[5]);
+
+    // Convert
+    accel_g[0] = raw_accel[0] / 16384.0f;
+    accel_g[1] = raw_accel[1] / 16384.0f;
+    accel_g[2] = raw_accel[2] / 16384.0f;
+}
+
+// 3. GYROSCOPE READ
+void ICM_ReadGyro(I2C_HandleTypeDef *hi2c, float *gyro_dps)
+{
+    uint8_t raw_data[6];
+    int16_t raw_gyro[3];
+    uint8_t bank = 0x00;
+
+    HAL_I2C_Mem_Write(hi2c, ICM_ADDR, REG_BANK_SEL, 1, &bank, 1, 10);
+    HAL_I2C_Mem_Read(hi2c, ICM_ADDR, REG_GYRO_XOUT_H, 1, raw_data, 6, 100);
+
+    raw_gyro[0] = (int16_t)(raw_data[0] << 8 | raw_data[1]);
+    raw_gyro[1] = (int16_t)(raw_data[2] << 8 | raw_data[3]);
+    raw_gyro[2] = (int16_t)(raw_data[4] << 8 | raw_data[5]);
+
+    // Sensitivity 131.0 for +/- 250dps
+    gyro_dps[0] = raw_gyro[0] / 131.0f;
+    gyro_dps[1] = raw_gyro[1] / 131.0f;
+    gyro_dps[2] = raw_gyro[2] / 131.0f;
+}
+
+void ICM_CalcAccelAngles(float *accel_g, float *ft_roll, float *ft_pitch,float *pitch,float *roll)
+{
+    static float prev_pitch = 0.0f;
+    static float prev_roll = 0.0f;
+    const float RAD_TO_DEG = 57.3f;
+
+    // Calculate Raw
+    float pitch_raw = atan2f(accel_g[1], accel_g[2]) * RAD_TO_DEG;
+    float roll_raw  = atan2f(accel_g[0], accel_g[2]) * RAD_TO_DEG;
+
+    // Filter
+    float pitch_filtered = 0.9f * prev_pitch + 0.1f * pitch_raw;
+    float roll_filtered  = 0.9f * prev_roll  + 0.1f * roll_raw;
+
+    prev_pitch = pitch_filtered;
+    prev_roll  = roll_filtered;
+
+    // OUTPUT: Write values back to main
+    *ft_roll  = roll_filtered;
+    *ft_pitch = pitch_filtered;
+    *pitch = pitch_raw;
+    *roll = roll_raw;
+}
+
+// 2. Gyroscope Integration
+void ICM_CalcGyroAngles(float *gyro_dps, float *pt_roll, float *pt_pitch, float *pt_yaw)
+{
+    static uint32_t millisOld = 0;
+    static float roll_gy = 0.0f;
+    static float pitch_gy = 0.0f;
+    static float yaw_gy = 0.0f;
+
+    if (millisOld == 0) {
+        millisOld = HAL_GetTick();
+        return;
+    }
+
+    uint32_t millisNow = HAL_GetTick();
+    float dt = (millisNow - millisOld) * 0.001f;
+    millisOld = millisNow;
+
+    // Integration
+    roll_gy  += gyro_dps[1] * dt;
+    pitch_gy += gyro_dps[0] * dt;
+    yaw_gy   += gyro_dps[2] * dt;
+
+    // OUTPUT: Write values back to main
+    *pt_roll  = roll_gy;
+    *pt_pitch = pitch_gy;
+    *pt_yaw   = yaw_gy;
+}

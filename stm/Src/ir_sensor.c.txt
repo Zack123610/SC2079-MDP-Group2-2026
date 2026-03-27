@@ -1,0 +1,48 @@
+#include "ir_sensor.h"
+#include "main.h"
+
+extern ADC_HandleTypeDef hadc1;
+
+// Added 'volatile' so the CPU knows DMA updates this array in the background
+static volatile uint16_t adc_raw[2];
+
+void IR_Init(void)
+{
+    // Starts the ADC in DMA mode. (Ensure DMA is set to CIRCULAR in STM32CubeIDE)
+    HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_raw, 2);
+
+    // MUTE THE INTERRUPTS to stop the CPU lag!
+    // This tells the DMA to silently overwrite the array without bothering the CPU.
+    __HAL_DMA_DISABLE_IT(hadc1.DMA_Handle, DMA_IT_TC | DMA_IT_HT | DMA_IT_TE);
+}
+
+void IR_Update(void)
+{
+    // INTENTIONALLY LEFT BLANK
+    // You are using DMA, which updates adc_raw[] in the background automatically.
+    // Calling HAL_ADC_PollForConversion here will cause HAL_MAX_DELAY to freeze forever!
+}
+
+static float adc_to_voltage(uint16_t adc)
+{
+    return (adc * 3.3f) / 4095.0f;
+}
+
+static float voltage_to_distance_cm(float v)
+{
+    // If voltage is 0.53V or lower, the distance formula would result in >= 100cm.
+    // We cap it at 100.0f to prevent division by zero and extreme distance spikes.
+    if (v <= 0.53f) {
+        return 100.0f;
+    }
+
+    return 13.0f / (v - 0.4f);
+}
+
+float IR_GetDistance(uint8_t sensor_index)
+{
+    // Prevent array out-of-bounds access
+    if (sensor_index > 1) return -1.0f;
+
+    return voltage_to_distance_cm(adc_to_voltage(adc_raw[sensor_index]));
+}

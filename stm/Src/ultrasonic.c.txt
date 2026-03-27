@@ -1,0 +1,69 @@
+#include "ultrasonic.h"
+#include <stdio.h>
+
+// Import Timer Handles defined in main.c
+extern TIM_HandleTypeDef htim8;
+extern TIM_HandleTypeDef htim6;
+
+// Private Variables
+static volatile uint32_t tc1 = 0;
+static volatile uint32_t tc2 = 0;
+static volatile uint32_t echo = 0;
+
+// Microsecond Delay using TIM6
+void delay_us(uint16_t us)
+{
+    __HAL_TIM_SET_COUNTER(&htim6, 0);
+    while (__HAL_TIM_GET_COUNTER(&htim6) < us);
+}
+
+// Input Capture Callback
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM8)
+    {
+        if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_7) == GPIO_PIN_SET)
+        {
+            tc1 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_2);
+        }
+        else
+        {
+            tc2 = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_2);
+
+            if (tc2 > tc1)
+            {
+                echo = tc2 - tc1;
+            }
+            else
+            {
+                echo = (0xFFFF - tc1) + tc2;
+            }
+
+        }
+    }
+}
+
+// Function to trigger the Ultrasonic Sensor
+void US_Trigger(void)
+{
+
+    // Send Trigger Pulse
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET);
+    delay_us(2);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_SET);
+    delay_us(10);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET);
+
+}
+
+// Function to calculate and return distance
+float US_GetDistance(void)
+{
+    return echo * 0.0343 / 2;
+}
+
+// Getter for raw echo time
+uint32_t US_GetEchoTime(void)
+{
+    return echo;
+}

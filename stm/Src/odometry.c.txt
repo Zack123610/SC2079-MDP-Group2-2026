@@ -1,0 +1,78 @@
+#include "odometry.h"
+#include <math.h>
+
+#define WHEEL_DIAMETER_CM 6.50f
+#define WHEEL_CIRC_CM (3.1415926f * WHEEL_DIAMETER_CM)  // ~20.42 cm
+
+#define COUNTS_PER_REV 1560.0f
+#define CM_PER_COUNT (WHEEL_CIRC_CM / COUNTS_PER_REV)
+
+static TIM_HandleTypeDef *g_encA = NULL;
+static TIM_HandleTypeDef *g_encD = NULL;
+
+static uint32_t cntA_prev = 0;
+static uint32_t cntD_prev = 0;
+static int32_t modA = 0;
+static int32_t modD = 0;
+
+void Odom_Init(TIM_HandleTypeDef *htim_enc_A, TIM_HandleTypeDef *htim_enc_D)
+{
+    g_encA = htim_enc_A;
+    g_encD = htim_enc_D;
+
+    HAL_TIM_Encoder_Start(g_encA, TIM_CHANNEL_ALL);
+    HAL_TIM_Encoder_Start(g_encD, TIM_CHANNEL_ALL);
+
+    cntA_prev = __HAL_TIM_GET_COUNTER(g_encA);
+    cntD_prev = __HAL_TIM_GET_COUNTER(g_encD);
+
+    modA = (int32_t)__HAL_TIM_GET_AUTORELOAD(g_encA) + 1;
+    modD = (int32_t)__HAL_TIM_GET_AUTORELOAD(g_encD) + 1;
+}
+
+void Odom_Reset(odom_state_t *st)
+{
+    st->total_counts_A = 0;
+    st->total_counts_D = 0;
+    st->distance_cm_A  = 0.0f;
+    st->distance_cm_D  = 0.0f;
+    st->rpsA           = 0.0f;
+    st->rpsD           = 0.0f;
+
+    cntA_prev = __HAL_TIM_GET_COUNTER(g_encA);
+    cntD_prev = __HAL_TIM_GET_COUNTER(g_encD);
+}
+
+void Odom_Update_20ms(odom_state_t *st)
+{
+    const float dt_ms = 20.0f;
+
+    uint32_t cntA = __HAL_TIM_GET_COUNTER(g_encA);
+    uint32_t cntD = __HAL_TIM_GET_COUNTER(g_encD);
+
+    int32_t dA = (int32_t)cntA - (int32_t)cntA_prev;
+    if      (dA >  (modA/2)) dA -= modA;
+    else if (dA < -(modA/2)) dA += modA;
+
+    int32_t dD = (int32_t)cntD - (int32_t)cntD_prev;
+    if      (dD >  (modD/2)) dD -= modD;
+    else if (dD < -(modD/2)) dD += modD;
+
+    /* FIX: Right encoder direction is reversed relative to forward.
+       Invert dD so forward motion produces positive counts/distance. */
+    dD = -dD;
+
+    st->total_counts_A += dA;
+    st->total_counts_D += dD;
+
+    st->distance_cm_A = (float)st->total_counts_A * CM_PER_COUNT;
+    st->distance_cm_D = (float)st->total_counts_D * CM_PER_COUNT;
+
+    float cpsA = fabsf((float)dA) * (1000.0f / dt_ms);
+    float cpsD = fabsf((float)dD) * (1000.0f / dt_ms);
+    st->rpsA = cpsA / COUNTS_PER_REV;
+    st->rpsD = cpsD / COUNTS_PER_REV;
+
+    cntA_prev = cntA;
+    cntD_prev = cntD;
+}

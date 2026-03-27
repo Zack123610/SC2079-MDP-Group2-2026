@@ -1,0 +1,28 @@
+#pragma once
+#include "stm32f4xx_hal.h"
+#include <stdint.h>
+
+// --- Hardware mapping from your Task 1 project ---
+// Encoder A: TIM2 encoder mode  (CH1=PA15, CH2=PB3)
+// Encoder D: TIM5 encoder mode  (CH1=PA0,  CH2=PA1)
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct {
+    volatile int32_t total_counts_A;
+    volatile int32_t total_counts_D;
+    volatile float   distance_cm_A;
+    volatile float   distance_cm_D;
+    volatile float   rpsA;
+    volatile float   rpsD;
+} odom_state_t;
+
+void Odom_Init(TIM_HandleTypeDef *htim_enc_A, TIM_HandleTypeDef *htim_enc_D);
+void Odom_Update_20ms(odom_state_t *st);
+void Odom_Reset(odom_state_t *st);
+
+#ifdef __cplusplus
+}
+#endif

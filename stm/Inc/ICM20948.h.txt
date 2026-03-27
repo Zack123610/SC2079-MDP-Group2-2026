@@ -1,0 +1,23 @@
+/*
+ * ICM20948.h
+ *
+ *  Created on: Feb 6, 2026
+ *      Author: andyo
+ */
+
+#ifndef INC_ICM20948_H_
+#define INC_ICM20948_H_
+
+#include "main.h" // Needed for HAL_I2C_Mem_Write
+
+// Device Address
+#define ICM_ADDR (0x68 << 1)
+
+// Function Prototypes
+void ICM_Init(I2C_HandleTypeDef *hi2c);
+void ICM_ReadAccel(I2C_HandleTypeDef *hi2c, float *accel_g);
+void ICM_ReadGyro(I2C_HandleTypeDef *hi2c, float *gyro_dps);
+void ICM_CalcAccelAngles(float *accel_g, float *ft_roll, float *ft_pitch,float *pitch,float *roll);
+void ICM_CalcGyroAngles(float *gyro_dps, float *pt_roll, float *pt_pitch, float *pt_yaw);
+
+#endif /* INC_ICM20948_H_ */

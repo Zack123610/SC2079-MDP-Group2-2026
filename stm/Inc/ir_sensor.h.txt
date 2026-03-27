@@ -1,0 +1,10 @@
+#ifndef IR_SENSOR_H
+#define IR_SENSOR_H
+
+#include <stdint.h>
+
+void IR_Update(void);
+void IR_Init(void);
+float IR_GetDistance(uint8_t channel);
+
+#endif
