@@ -7,6 +7,7 @@ Central communication hub that coordinates Android (Bluetooth), STM32 (USB seria
 ```
 rpi/
 ├── task1.py                # Task 1 entry point – full autonomous navigation flow
+├── task2.py                # Task 2 entry point – two-obstacle arrow decision flow
 ├── obstacle_a5.py          # Obstacle A5 – standalone image identification task
 ├── main.py                 # Legacy entry point – basic Android → STM32 routing
 ├── bluetooth_interface.py  # Bluetooth RFCOMM link to Android tablet
@@ -20,6 +21,7 @@ rpi/
 | Module | Responsibility |
 |--------|---------------|
 | `task1.py` | Full Task 1 flow: collects obstacles from Android, requests path from algo service, batch-sends instructions to STM32, handles image capture, reports results to Android |
+| `task2.py` | Task 2 flow: moves forward to each of two obstacles, detects LEFT/RIGHT arrows via YOLO, and turns accordingly. Uses raw 4-char STM commands (no framing/checksum). |
 | `obstacle_a5.py` | Interactive obstacle image identification with rolling detection window and face rotation |
 | `main.py` | Legacy: starts Bluetooth + STM32 interfaces, routes Android commands to STM32 |
 | `bluetooth_interface.py` | Opens `/dev/rfcomm0` (or PyBluez server), exposes `readline()` / `send()` |
@@ -51,9 +53,11 @@ sudo systemctl start bluetooth
 sudo hciconfig hci0 piscan
 ```
 
-### 3. Bind RFCOMM Channel (Recommended)
+### 3. Bind RFCOMM Channel
 
-Let a system service (or startup script) create the RFCOMM serial device before running the program:
+If you followed the lab manual, `rfcomm listen` is already configured to run automatically on boot. No manual step is needed.
+
+If RFCOMM is **not** set up at startup, bind it manually before running any task:
 
 ```bash
 sudo rfcomm listen /dev/rfcomm0 1
@@ -67,9 +71,9 @@ This exposes the Bluetooth link as `/dev/rfcomm0`, which `bluetooth_interface.py
 
 ```bash
 cd rpi
-python task1.py --pc-host <PC_IP>                    # default: socket-based BT
-python task1.py --pc-host <PC_IP> --bt-mode serial   # /dev/rfcomm0 via pyserial
-python task1.py --pc-host <PC_IP> --bt-mode socket   # native AF_BLUETOOTH (default)
+python task1.py --pc-host <PC_IP>                    # default: serial-based BT (/dev/rfcomm0)
+python task1.py --pc-host <PC_IP> --bt-mode serial   # /dev/rfcomm0 via pyserial (default)
+python task1.py --pc-host <PC_IP> --bt-mode socket   # native AF_BLUETOOTH
 ```
 
 `task1.py` connects all interfaces and runs the full autonomous flow:
@@ -89,6 +93,29 @@ python task1.py --pc-host <PC_IP> --bt-mode socket   # native AF_BLUETOOTH (defa
    - `DONE` → sends the corresponding Android UI command.
    - `HALT` (from `5000` / CAPTURE_IMAGE) → runs image recognition via DetectionTracker, sends `TARGET,<obs>,<id>` to Android, then sends `RESM` to resume STM.
 5. After completion (or 6-minute timeout), sends `0000` to STM and waits for next run.
+
+### Task 2 – Arrow-based Obstacle Decisions
+
+```bash
+cd rpi
+python task2.py --pc-host <PC_IP>                    # default: serial-based BT
+python task2.py --pc-host <PC_IP> --bt-mode socket   # native AF_BLUETOOTH
+python task2.py --pc-host <PC_IP> --detection-time 2  # longer detection window
+```
+
+`task2.py` runs a two-obstacle left/right decision flow:
+
+1. Waits for `BEGIN` from Android via Bluetooth.
+2. Sends `1000` (forward) to STM32, waits for `DONE`.
+3. Runs a detection window (default 1s, up to 4 retries) counting LEFT vs RIGHT arrow detections from YOLO:
+   - Class ID 39 / "Left" → LEFT
+   - Class ID 38 / "Right" → RIGHT
+4. Sends `3000` (turn left) or `4000` (turn right) based on the majority vote, waits for `DONE`.
+5. Runs another detection window for the second obstacle.
+6. Sends `3030` (second left) or `4040` (second right), waits for `DONE`.
+7. Sends `TASK2,DONE` to Android.
+
+**Key differences from Task 1**: commands are sent as individual 4-char strings (no `<>` framing or checksum), and no algo service is involved.
 
 ### Convert Instructions (standalone tool)
 
@@ -121,7 +148,9 @@ python camera_interface.py
 python pc_interface.py --host <PC_IP>
 ```
 
-## Message Flow (Task 1)
+## Message Flow
+
+### Task 1
 
 ```
 Android App  --[Bluetooth RFCOMM]-->  Raspberry Pi  --[USB Serial]-->  STM32
@@ -165,3 +194,24 @@ Instructions are sent as a single framed string: `<cmd1cmd2...cmdN>checksum`
 | `8000` | Backward left |
 | `9000` | Backward right |
 | `0000` | Stop |
+
+### Task 2
+
+```
+Android App  --[Bluetooth RFCOMM]-->  Raspberry Pi  --[USB Serial]-->  STM32
+                                           │
+                                           ├──[ZMQ PUB]───> PC (camera frames)
+                                           └──[ZMQ SUB]<─── PC (YOLO detections)
+```
+
+Task 2 does not use the algo service. STM commands are sent individually (not batched).
+
+| Step | RPi → STM32 | Condition |
+|------|-------------|-----------|
+| Move to first obstacle | `1000` | Always |
+| First turn | `3000` (LEFT) or `4000` (RIGHT) | Based on arrow detection |
+| Second turn | `3030` (LEFT) or `4040` (RIGHT) | Based on arrow detection |
+
+| RPi → Android | Description |
+|---------------|-------------|
+| `TASK2,DONE` | Sent after the full run completes |
