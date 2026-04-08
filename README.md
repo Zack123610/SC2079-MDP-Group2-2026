@@ -135,9 +135,11 @@ Example: `<603020206033>25`
 | Directory | Description |
 |-----------|-------------|
 | `rpi/` | Raspberry Pi modules – see [rpi/README.md](rpi/README.md) |
+| `android/` | Android tablet app (user input, Bluetooth communication with RPi) |
 | `stm32/` | STM32 USB serial interface and test scripts |
 | `service/` | Algo pathfinding REST API service (Flask, port 5001) |
-| `imageReg/` | YOLO image recognition and PC-side receiver |
+| `imageReg/` | YOLO image recognition and PC-side receiver (`pc_receiver.py`) |
+| `robot-path-visualizer/` | Robot path visualisation tool |
 
 ## Quick Start
 
