@@ -16,3 +16,4 @@ rpi/rpi_log.txt
 
 # Image Recognition
 imageReg/src/raw_tcp/*
+imageReg/task*

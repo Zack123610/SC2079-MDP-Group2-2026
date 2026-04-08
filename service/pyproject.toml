@@ -1,0 +1,15 @@
+[project]
+name = "mdp-algo-service"
+version = "0.1.0"
+description = "Algo pathfinding REST API service for MDP"
+requires-python = ">=3.12"
+dependencies = [
+    "flask-cors",
+    "jinja2",
+    "marshmallow",
+    "marshmallow-enum",
+    "numpy",
+    "pydantic",
+    "flask-openapi3[swagger]",
+    "python-tsp",
+]
