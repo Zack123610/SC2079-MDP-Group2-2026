@@ -2,6 +2,9 @@
 
 Project Repo for SC2079 Multi-Disciplinary Project 2026
 
+### YouTube Link
+[![Watch our project video](assets/thumbnail.png)](https://www.youtube.com/watch?v=WUxeIZfVJFk)
+
 ## Project Overview
 
 This project is a **mini car robot navigation challenge**. The robot must navigate to multiple obstacles and complete image recognition tasks by identifying numbers displayed on each obstacle.
